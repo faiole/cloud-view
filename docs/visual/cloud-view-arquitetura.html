@@ -156,13 +156,13 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   <div>
     <div class="eyebrow">Arquitetura · proposta técnica</div>
     <h1>Cloud View</h1>
-    <p class="lede">Um painel para acompanhar custos, saúde, rede e otimização de várias contas AWS, Azure e OCI, separadas por cliente, com ações rápidas e login protegido por MFA.</p>
+    <p class="lede">Um painel para acompanhar custos, faturamento, saúde, rede e otimização de várias contas AWS, Azure e OCI, separadas por empresa, com ações rápidas e login protegido por MFA. Roda em Docker, na sua máquina ou em qualquer nuvem.</p>
   </div>
   <div class="facts" aria-label="Resumo">
     <div class="fact"><b>3 nuvens</b><span>AWS (contas e Organizations), Azure, OCI</span></div>
-    <div class="fact"><b>&lt; 200 ms</b><span>meta de resposta do painel</span></div>
+    <div class="fact"><b>1 compose</b><span>mesma stack local e em VM de qualquer nuvem</span></div>
     <div class="fact"><b>0 chaves AWS</b><span>acesso por AssumeRole + ExternalId</span></div>
-    <div class="fact"><b>Fase 0</b><span>fundação entregue no repositório</span></div>
+    <div class="fact"><b>53 testes</b><span>inclusive isolamento por empresa no Postgres</span></div>
   </div>
 </header>
 
@@ -174,7 +174,7 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   </div>
   <div class="diagram">
     <svg viewBox="0 0 1000 480" role="img" aria-labelledby="dg-title">
-      <title id="dg-title">Diagrama: usuário passa por WAF e ALB até o painel, a API e o Keycloak; a API usa Postgres, Redis e filas SQS; workers leem segredos no Secrets Manager e acessam as contas AWS, Azure e OCI dos clientes, que devolvem eventos para a fila.</title>
+      <title id="dg-title">Diagrama: usuário passa pelo Caddy até o painel, a API e o Keycloak, todos em containers num único servidor; a API usa Postgres, Redis e filas; workers abrem as credenciais no cofre e acessam as contas AWS, Azure e OCI dos clientes, que devolvem eventos para a fila.</title>
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0 L10 5 L0 10 z"/></marker>
         <marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah cred" d="M0 0 L10 5 L0 10 z"/></marker>
@@ -182,7 +182,7 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       </defs>
 
       <rect class="zone" x="155" y="24" width="580" height="440" rx="10"/>
-      <text class="zone-label" x="171" y="44">Conta hub AWS · ECS Fargate</text>
+      <text class="zone-label" x="171" y="44">Servidor Docker · AWS, Azure, OCI ou local</text>
       <rect class="zone" x="785" y="160" width="200" height="270" rx="10"/>
       <text class="zone-label" x="801" y="450">Contas dos clientes</text>
 
@@ -193,11 +193,11 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       <text class="s" x="28" y="251">senha + TOTP</text>
 
       <rect class="box" x="172" y="170" width="132" height="112" rx="8"/>
-      <text class="t" x="184" y="198">WAF + ALB</text>
-      <text class="s" x="184" y="216">TLS 1.2+/1.3</text>
-      <text class="s" x="184" y="231">limite por IP no login</text>
-      <text class="s" x="184" y="246">allowlist opcional</text>
-      <text class="s" x="184" y="261">admin Keycloak bloqueado</text>
+      <text class="t" x="184" y="198">Caddy</text>
+      <text class="s" x="184" y="216">HTTPS automático</text>
+      <text class="s" x="184" y="231">única porta pública</text>
+      <text class="s" x="184" y="246">/ · /api · /auth</text>
+      <text class="s" x="184" y="261">admin Keycloak restrito</text>
 
       <!-- Aplicação -->
       <rect class="box" x="352" y="60" width="150" height="56" rx="8"/>
@@ -217,14 +217,14 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       <!-- Dados e filas -->
       <rect class="box" x="562" y="44" width="152" height="56" rx="8"/>
       <text class="t" x="574" y="68">PostgreSQL</text>
-      <text class="s" x="574" y="85">isolamento por cliente (RLS)</text>
+      <text class="s" x="574" y="85">isolamento por empresa (RLS)</text>
 
       <rect class="box" x="562" y="122" width="152" height="52" rx="8"/>
       <text class="t" x="574" y="144">Redis</text>
       <text class="s" x="574" y="161">sessões e cache</text>
 
       <rect class="box" x="562" y="200" width="152" height="52" rx="8"/>
-      <text class="t" x="574" y="222">Filas SQS</text>
+      <text class="t" x="574" y="222">Filas (Redis)</text>
       <text class="s" x="574" y="239">coleta · ações · eventos</text>
 
       <rect class="box" x="562" y="288" width="152" height="72" rx="8"/>
@@ -233,8 +233,8 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       <text class="s" x="574" y="344">ações (role separada)</text>
 
       <rect class="box key" x="562" y="392" width="152" height="56" rx="8"/>
-      <text class="t" x="574" y="416">Secrets Manager</text>
-      <text class="s" x="574" y="433">+ chave KMS exclusiva</text>
+      <text class="t" x="574" y="416">Cofre de credenciais</text>
+      <text class="s" x="574" y="433">API só tem a chave pública</text>
 
       <!-- Nuvens -->
       <rect class="box" x="802" y="176" width="168" height="62" rx="8"/>
@@ -322,15 +322,72 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 <section>
   <div class="section-head">
+    <div class="eyebrow">Acessos e faturamento</div>
+    <h2>Cada empresa vê só o que é dela</h2>
+    <p class="muted">A Organization não pertence a uma empresa. A atribuição é feita conta a conta, e uma conta compartilhada pode ser dividida por tag. Assim a empresa A vê os custos das suas contas em AB, AC e AD, e nada da empresa B.</p>
+  </div>
+  <div class="diagram">
+    <svg viewBox="0 0 1000 300" role="img" aria-labelledby="ab-title" style="min-width:760px">
+      <title id="ab-title">Três organizações AB, AC e AD. A empresa A tem uma conta em cada; a empresa B tem uma conta em AB; uma conta em AC é compartilhada e dividida pela tag cost-center.</title>
+      <rect class="zone" x="16" y="16" width="250" height="268" rx="10"/>
+      <text class="zone-label" x="32" y="38">Organizações / pagadoras</text>
+      <rect class="box" x="32" y="52" width="218" height="62" rx="8"/><text class="t" x="46" y="76">Organização AB</text><text class="s" x="46" y="94">pagadora 1111…</text>
+      <rect class="box" x="32" y="128" width="218" height="62" rx="8"/><text class="t" x="46" y="152">Organização AC</text><text class="s" x="46" y="170">pagadora 2222…</text>
+      <rect class="box" x="32" y="204" width="218" height="62" rx="8"/><text class="t" x="46" y="228">Organização AD</text><text class="s" x="46" y="246">pagadora 3333…</text>
+
+      <rect class="box" x="360" y="30" width="230" height="40" rx="8"/><text class="t" x="374" y="55">conta 1000…01 · produção</text>
+      <rect class="box" x="360" y="80" width="230" height="40" rx="8"/><text class="t" x="374" y="105">conta 2000…01 · produção B</text>
+      <rect class="box" x="360" y="130" width="230" height="40" rx="8"/><text class="t" x="374" y="155">conta 1000…02 · dados</text>
+      <rect class="box" x="360" y="180" width="230" height="40" rx="8"/><text class="t" x="374" y="205">conta 9000…01 · compartilhada</text>
+      <rect class="box" x="360" y="230" width="230" height="40" rx="8"/><text class="t" x="374" y="255">conta 1000…03 · dev</text>
+
+      <path class="edge" d="M250 80 L300 80 L300 50 L358 50" marker-end="url(#ah)"/>
+      <path class="edge" d="M300 80 L300 100 L358 100" marker-end="url(#ah)"/>
+      <path class="edge" d="M250 158 L300 158 L300 150 L358 150" marker-end="url(#ah)"/>
+      <path class="edge" d="M300 158 L300 200 L358 200" marker-end="url(#ah)"/>
+      <path class="edge" d="M250 236 L300 236 L300 250 L358 250" marker-end="url(#ah)"/>
+
+      <rect class="box key" x="760" y="60" width="220" height="80" rx="8"/><text class="t" x="776" y="88">Empresa A</text><text class="s" x="776" y="106">3 contas inteiras</text><text class="s" x="776" y="121">+ tag cost-center = empresa-a</text>
+      <rect class="box key" x="760" y="180" width="220" height="80" rx="8"/><text class="t" x="776" y="208">Empresa B</text><text class="s" x="776" y="226">1 conta inteira</text><text class="s" x="776" y="241">+ tag cost-center = empresa-b</text>
+
+      <path class="edge cred" d="M590 50 L680 50 L680 90 L758 90" marker-end="url(#ahc)"/>
+      <path class="edge cred" d="M590 150 L680 150 L680 100 L758 100" marker-end="url(#ahc)"/>
+      <path class="edge cred" d="M590 250 L700 250 L700 120 L758 120" marker-end="url(#ahc)"/>
+      <path class="edge cred" d="M590 100 L660 100 L660 210 L758 210" marker-end="url(#ahc)"/>
+      <path class="edge push" d="M590 196 L640 196 L640 110 L758 110" marker-end="url(#ahp)"/>
+      <path class="edge push" d="M590 204 L640 204 L640 230 L758 230" marker-end="url(#ahp)"/>
+      <text class="lbl push" x="600" y="190">por tag</text>
+    </svg>
+  </div>
+  <div class="cols">
+    <div class="panel"><h3>Administração de usuários</h3><p>Convite por e-mail para criar senha e MFA. Desativar derruba as sessões na hora. Redefinir MFA para quem perdeu o celular. O administrador da empresa convida só para a própria empresa.</p></div>
+    <div class="panel"><h3>Invoices e notas fiscais</h3><p>PDF, XML da NF-e, ZIP ou CSV publicados para uma empresa. A fatura de uma Organization compartilhada nunca é exposta inteira; o demonstrativo mensal mostra só a parte da empresa.</p></div>
+    <div class="panel"><h3>Relatórios</h3><p>Por serviço, conta, região, mês, dia ou qualquer tag, com filtros e exportação CSV. Custos chegam no formato FOCUS, que AWS, Azure e OCI exportam igual.</p></div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Papel</th><th>Custos e relatórios</th><th>Invoices e NF</th><th>Recursos</th><th>Ações rápidas</th><th>Convidar pessoas</th></tr></thead>
+      <tbody>
+        <tr><td>Administrador da empresa</td><td>sim</td><td>sim</td><td>sim</td><td>sim</td><td>só da própria empresa</td></tr>
+        <tr><td>Financeiro</td><td>sim</td><td>sim</td><td>—</td><td>—</td><td>—</td></tr>
+        <tr><td>Operador</td><td>sim</td><td>—</td><td>sim</td><td>sim</td><td>—</td></tr>
+        <tr><td>Leitura</td><td>sim</td><td>—</td><td>sim</td><td>—</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="section-head">
     <div class="eyebrow">Credenciais das nuvens</div>
     <h2>Chaves guardadas com segurança</h2>
-    <p class="muted">Sempre que possível, nenhum segredo é guardado. Quando há segredo, ele vai para o Secrets Manager e o banco guarda só a referência.</p>
+    <p class="muted">Sempre que possível, nenhum segredo é guardado. Quando há segredo, ele vai para um cofre próprio que funciona em qualquer nuvem: cada credencial é cifrada com AES-256 e a chave dela, com RSA-4096.</p>
   </div>
   <div class="cred-grid">
     <div class="panel">
       <h3>AWS</h3>
-      <span class="how">sem chave de acesso</span>
-      <p>Uma role em cada conta, criada por CloudFormation de 1 clique. Em Organizations, um StackSet cobre contas novas sozinho. ExternalId único por cliente.</p>
+      <span class="how">sem chave por cliente</span>
+      <p>Uma role em cada conta, criada por CloudFormation de 1 clique; StackSet cobre a Organization inteira. Uma única identidade "hub" assume essas roles, com ExternalId único por cliente.</p>
     </div>
     <div class="panel">
       <h3>Azure</h3>
@@ -344,10 +401,10 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     </div>
   </div>
   <ul class="rules">
-    <li><b>Chave KMS exclusiva</b><span>Só os workers decifram as credenciais. A API pode gravar, mas não ler.</span></li>
+    <li><b>API grava, não lê</b><span>A API só tem a chave pública do cofre. Só os workers têm a privada, num volume separado.</span></li>
     <li><b>Duas roles por conta</b><span>Leitura para coletar; escrita só para ações e só em recursos com a tag <code>cloudview-actions=enabled</code>.</span></li>
     <li><b>Credenciais temporárias</b><span>Tokens STS e Azure ficam só em memória, por no máximo 1 hora.</span></li>
-    <li><b>Alerta de leitura indevida</b><span>Qualquer leitura de credencial fora dos workers dispara alerta.</span></li>
+    <li><b>Documentos cifrados</b><span>Invoices e notas fiscais ficam cifrados no disco, ou em qualquer S3 compatível.</span></li>
   </ul>
 </section>
 
@@ -381,25 +438,29 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   <div class="roadmap">
     <div class="phase done">
       <span class="tag">Fase 0 <span class="pill">entregue</span></span>
+      <div class="what"><b>Fundação</b><span class="muted">Login com senha e TOTP obrigatório, sessão no servidor, step-up MFA, empresas, isolamento no Postgres, auditoria imutável.</span></div>
+      <span class="when">2–3 semanas</span>
+    </div>
+    <div class="phase done">
+      <span class="tag">Fase 0.5 <span class="pill">entregue</span></span>
       <div class="what">
-        <b>Fundação</b>
+        <b>Acessos e faturamento</b>
         <ul class="delivered">
-          <li>Keycloak com senha forte e TOTP obrigatório</li>
-          <li>API/BFF com sessão no servidor e step-up MFA</li>
-          <li>Clientes e papéis por cliente</li>
-          <li>Isolamento por cliente no Postgres (RLS)</li>
-          <li>Auditoria que não pode ser alterada</li>
-          <li>Painel: visão geral, clientes, acessos, auditoria</li>
-          <li>Terraform da conta hub validado</li>
-          <li>CloudFormation de onboarding AWS</li>
-          <li>CI com 22 testes, incluindo RLS em Postgres real</li>
+          <li>Administração de usuários e papéis por empresa</li>
+          <li>Contas atribuídas por empresa, inclusive por tag</li>
+          <li>Importação FOCUS de AWS, Azure e OCI</li>
+          <li>Relatórios por conta, serviço e tag, com CSV</li>
+          <li>Invoices e notas fiscais por empresa</li>
+          <li>Cofre de credenciais portátil</li>
+          <li>Stack Docker única com HTTPS automático</li>
+          <li>53 testes, inclusive RLS em Postgres real</li>
         </ul>
       </div>
       <span class="when">2–3 semanas</span>
     </div>
     <div class="phase">
       <span class="tag">Fase 1</span>
-      <div class="what"><b>MVP AWS</b><span class="muted">Contas e Organizations, inventário e rede, custos e previsão, saúde, dashboard geral, reiniciar/ligar/desligar.</span></div>
+      <div class="what"><b>Coleta AWS</b><span class="muted">Conexões e Organizations, custos e invoices automáticos, inventário e rede, saúde, reiniciar/ligar/desligar.</span></div>
       <span class="when">4–6 semanas</span>
     </div>
     <div class="phase">
@@ -419,7 +480,7 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     </div>
     <div class="phase">
       <span class="tag">Fase 5</span>
-      <div class="what"><b>Evolução</b><span class="muted">Portal do cliente, topologia de rede, relatório mensal, agenda liga/desliga, rateio por tag.</span></div>
+      <div class="what"><b>Evolução</b><span class="muted">Topologia de rede, relatório mensal em PDF, agenda liga/desliga.</span></div>
       <span class="when">contínuo</span>
     </div>
   </div>
@@ -432,23 +493,23 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   </div>
   <div class="cost">
     <div class="panel">
-      <span class="muted">Estimativa mensal, até ~100 contas</span>
-      <span class="big">US$ 250–450</span>
-      <p>Valores de referência, ainda não validados numa conta real. Somam-se as chamadas ao Cost Explorer (US$ 0,01 cada).</p>
+      <span class="muted">Uma VM com Docker, até ~100 contas</span>
+      <span class="big">US$ 0–60</span>
+      <p>Por mês, conforme a nuvem. Na OCI, a Ampere A1 cabe no plano Always Free. Valores de referência, ainda não validados.</p>
     </div>
-    <div class="panel bars" aria-label="Composição estimada do custo mensal em dólares">
-      <div class="bar"><span>RDS Multi-AZ</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="v">~130</span></div>
-      <div class="bar"><span>ECS Fargate</span><div class="track"><div class="fill" style="width:92%"></div></div><span class="v">~120</span></div>
-      <div class="bar"><span>ALB + WAF</span><div class="track"><div class="fill" style="width:38%"></div></div><span class="v">~50</span></div>
-      <div class="bar"><span>Redis</span><div class="track"><div class="fill" style="width:23%"></div></div><span class="v">~30</span></div>
-      <div class="bar"><span>Secrets, KMS, SQS</span><div class="track"><div class="fill" style="width:15%"></div></div><span class="v">~20</span></div>
+    <div class="panel bars" aria-label="Custo mensal aproximado de uma VM de 2 vCPU e 8 GB por nuvem, em dólares">
+      <div class="bar"><span>AWS t4g.large</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="v">~50</span></div>
+      <div class="bar"><span>Azure B2s</span><div class="track"><div class="fill" style="width:70%"></div></div><span class="v">~35</span></div>
+      <div class="bar"><span>OCI Ampere A1</span><div class="track"><div class="fill" style="width:2%"></div></div><span class="v">0</span></div>
+      <div class="bar"><span>Sua máquina</span><div class="track"><div class="fill" style="width:2%"></div></div><span class="v">0</span></div>
+      <p class="muted" style="font-size:13px">Banco e Redis podem ir para serviços gerenciados depois, trocando só as URLs.</p>
     </div>
   </div>
 </section>
 
 <footer>
   <span>Código e documentação: <a href="https://github.com/faiole/cloud-view/tree/claude/vigilant-hawking-kt9w91">faiole/cloud-view</a></span>
-  <span>Detalhes: <code>docs/ARCHITECTURE.md</code> · <code>docs/FASE-0.md</code></span>
+  <span>Detalhes: <code>docs/ARCHITECTURE.md</code> · <code>docs/ACESSOS-E-FATURAMENTO.md</code> · <code>docs/DEPLOY.md</code></span>
 </footer>
 
 </div>
