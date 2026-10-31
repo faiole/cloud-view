@@ -162,7 +162,7 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     <div class="fact"><b>3 nuvens</b><span>AWS (contas e Organizations), Azure, OCI</span></div>
     <div class="fact"><b>1 compose</b><span>mesma stack local e em VM de qualquer nuvem</span></div>
     <div class="fact"><b>0 chaves AWS</b><span>acesso por AssumeRole + ExternalId</span></div>
-    <div class="fact"><b>72 testes</b><span>inclusive isolamento por empresa no Postgres e coleta AWS simulada</span></div>
+    <div class="fact"><b>93 testes</b><span>inclusive isolamento por empresa no Postgres e coleta AWS simulada</span></div>
   </div>
 </header>
 
@@ -463,9 +463,9 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       <div class="what"><b>Coleta AWS</b><span class="muted">Conexões e Organizations com descoberta automática, custos (Cost Explorer ou FOCUS no S3), invoices em PDF, inventário EC2/EBS/IPs, rede com portas expostas, status checks e AWS Health, reiniciar/ligar/desligar com MFA. Fila e agendador no próprio Postgres.</span></div>
       <span class="when">4–6 semanas</span>
     </div>
-    <div class="phase">
-      <span class="tag">Fase 2</span>
-      <div class="what"><b>Otimização e alertas</b><span class="muted">Recomendações, orçamentos, anomalias, notificações, patches.</span></div>
+    <div class="phase done">
+      <span class="tag">Fase 2 <span class="pill">entregue</span></span>
+      <div class="what"><b>Otimização e alertas</b><span class="muted">Cost Optimization Hub e regras próprias com economia estimada, cobertura de Savings Plans, orçamentos com previsão, anomalias de custo para as três nuvens, alertas por e-mail, Slack, Teams e webhook assinado, patches do SSM.</span></div>
       <span class="when">3–4 semanas</span>
     </div>
     <div class="phase">

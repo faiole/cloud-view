@@ -48,7 +48,7 @@ O alerta lista os serviços que mais subiram. Funciona com AWS, Azure e OCI (qua
 - Se todos os canais falharem, o envio é repetido até 3 vezes com espera crescente.
 
 ## Testes
-94 testes (SQLite e Postgres com RLS). Cost Optimization Hub, Cost Explorer (cobertura e
+93 testes (SQLite e Postgres com RLS). Cost Optimization Hub, Cost Explorer (cobertura e
 anomalias), SSM e os destinos de notificação usam respostas falsas no formato real.
 
 ## Ainda não verificado
