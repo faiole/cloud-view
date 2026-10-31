@@ -5,10 +5,7 @@ compartilhada (ex.: Organization AB com contas das empresas A e B) não é expos
 o administrador publica para cada cliente o documento dele (NF emitida para ele, demonstrativo).
 """
 
-import hashlib
 import re
-import unicodedata
-import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -23,33 +20,10 @@ from app.schemas import DocumentOut
 from app.security.deps import require_admin, require_recent_mfa, scoped_db, tenant_access
 from app.security.session import SessionData
 from app.services import audit
+from app.services.documents import DocumentRejected, store_document
 from app.services.storage import get_storage
 
 router = APIRouter(prefix="/tenants/{tenant_id}/documents", tags=["documents"])
-
-
-def sniff(data: bytes, filename: str) -> str:
-    """Tipo pelo conteúdo, não pela extensão informada."""
-    head = data[:512].lstrip()
-    if data.startswith(b"%PDF-"):
-        return "application/pdf"
-    if data.startswith(b"PK\x03\x04"):
-        return "application/zip"
-    if head.startswith(b"<?xml") or head.startswith(b"<nfeProc") or head.startswith(b"<NFe"):
-        return "application/xml"
-    if filename.lower().endswith(".csv"):
-        try:
-            data[:4096].decode("utf-8")
-            return "text/csv"
-        except UnicodeDecodeError:
-            pass
-    raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "aceitos: PDF, XML (NF-e), ZIP ou CSV")
-
-
-def safe_filename(name: str) -> str:
-    name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
-    name = re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._") or "documento"
-    return name[:150]
 
 
 def _period(v: str) -> date:
@@ -100,48 +74,33 @@ async def upload_document(
     data = await file.read(limit + 1)
     if len(data) > limit:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "arquivo maior que o limite")
-    if not data:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "arquivo vazio")
-    filename = safe_filename(file.filename or "documento")
-    content_type = sniff(data, filename)
-    period = _period(billing_period)
-    digest = hashlib.sha256(data).hexdigest()
-
-    dup = db.scalar(select(Document.id).where(Document.tenant_id == tenant_id, Document.sha256 == digest))
-    if dup:
-        raise HTTPException(status.HTTP_409_CONFLICT, "este arquivo já foi publicado para o cliente")
-
-    doc_id = str(uuid.uuid4())
-    key = f"tenants/{tenant_id}/{period:%Y-%m}/{doc_id}/{filename}"
-    storage.put(key, data, content_type)
-    doc = Document(
-        id=doc_id,
-        tenant_id=tenant_id,
-        kind=kind.value,
-        provider=provider,
-        billing_period=period,
-        number=number,
-        issuer=issuer,
-        amount=amount,
-        currency=currency.upper() if currency else None,
-        due_date=due_date,
-        filename=filename,
-        content_type=content_type,
-        size_bytes=len(data),
-        sha256=digest,
-        storage_key=key,
-        uploaded_by=user.email,
-    )
-    db.add(doc)
-    db.flush()
+    try:
+        doc = store_document(
+            db,
+            storage,
+            tenant_id=tenant_id,
+            data=data,
+            filename=file.filename or "documento",
+            kind=kind.value,
+            billing_period=_period(billing_period),
+            uploaded_by=user.email,
+            provider=provider,
+            number=number,
+            issuer=issuer,
+            amount=amount,
+            currency=currency,
+            due_date=due_date,
+        )
+    except DocumentRejected as e:
+        raise HTTPException(e.status, str(e)) from e
     audit.record(
         db,
         request,
         "document.upload",
         user=user,
         tenant_id=tenant_id,
-        target=filename,
-        details={"kind": kind.value, "period": f"{period:%Y-%m}", "sha256": digest},
+        target=doc.filename,
+        details={"kind": kind.value, "period": f"{doc.billing_period:%Y-%m}", "sha256": doc.sha256},
     )
     return doc
 

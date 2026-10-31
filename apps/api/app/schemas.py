@@ -235,3 +235,169 @@ class DocumentOut(BaseModel):
     content_type: str
     size_bytes: int
     created_at: datetime
+
+
+# --- Fase 1: conexões, coleta, inventário, saúde, ações -------------------------------------------
+
+
+class ConnectionCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    kind: str = Field(pattern=r"^(aws_organization|aws_account)$")
+    account_id: str = Field(
+        pattern=r"^\d{12}$", description="conta management (Organization) ou a conta avulsa"
+    )
+    role_name: str = Field(default="CloudViewReadOnly", pattern=r"^[\w+=,.@-]{1,64}$")
+    cost_source: str = Field(default="cost_explorer", pattern=r"^(cost_explorer|focus_s3|manual)$")
+    focus_s3_uri: str | None = Field(default=None, pattern=r"^s3://[a-z0-9.\-]{3,63}(/.*)?$")
+    regions: list[str] | None = None
+    collect_invoices: bool = True
+
+
+class ConnectionUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    cost_source: str | None = Field(default=None, pattern=r"^(cost_explorer|focus_s3|manual)$")
+    focus_s3_uri: str | None = Field(default=None, pattern=r"^s3://[a-z0-9.\-]{3,63}(/.*)?$")
+    regions: list[str] | None = None
+    collect_invoices: bool | None = None
+
+
+class ConnectionDetail(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    provider: str
+    kind: str
+    native_id: str
+    name: str
+    role_arn: str | None
+    external_id: str | None
+    member_role_name: str
+    operator_role_name: str
+    regions: list[str] | None
+    cost_source: str
+    focus_s3_uri: str | None
+    collect_invoices: bool
+    status: str
+    last_error: str | None
+    last_sync_at: datetime | None
+    accounts: int = 0
+
+
+class HubCredentialsIn(BaseModel):
+    access_key_id: str = Field(pattern=r"^(AKIA|ASIA)[A-Z0-9]{16}$")
+    secret_access_key: str = Field(min_length=40, max_length=40)
+    principal_arn: str = Field(pattern=r"^arn:aws(-[a-z]+)*:iam::\d{12}:(user|role)/[\w+=,.@/-]+$")
+
+
+class HubStatus(BaseModel):
+    mode: str  # default | vault
+    principal_arn: str | None
+    access_key_hint: str | None
+    updated_at: datetime | None
+
+
+class JobOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    kind: str
+    connection_id: str | None
+    cloud_account_id: str | None
+    status: str
+    attempts: int
+    error: str | None
+    result: dict
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+class ResourceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    provider: str
+    account_native_id: str = ""
+    account_name: str | None = None
+    region: str
+    type: str
+    native_id: str
+    name: str | None
+    state: str | None
+    instance_type: str | None
+    vcpu: int | None
+    memory_mib: int | None
+    platform: str | None
+    private_ips: list
+    public_ips: list
+    vpc_id: str | None
+    subnet_id: str | None
+    security_groups: list
+    tags: dict
+    attributes: dict
+    findings: list
+    health: str | None
+    health_details: dict
+    collected_at: datetime
+
+
+class HealthEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    source: str
+    service: str | None
+    region: str | None
+    category: str | None
+    status: str
+    title: str
+    description: str | None
+    start_at: datetime | None
+    end_at: datetime | None
+    resource_id: str | None
+
+
+class HealthSummary(BaseModel):
+    instances: int
+    running: int
+    impaired: list[ResourceOut]
+    events: list[HealthEventOut]
+    last_collected_at: datetime | None
+
+
+class NetworkVpc(BaseModel):
+    vpc: ResourceOut
+    subnets: list[ResourceOut]
+    instances: int
+    exposed_instances: list[ResourceOut]
+
+
+class NetworkSummary(BaseModel):
+    vpcs: list[NetworkVpc]
+    open_security_groups: list[ResourceOut]
+    findings_by_code: dict[str, int]
+
+
+class ActionIn(BaseModel):
+    action: str = Field(pattern=r"^(reboot|start|stop)$")
+    confirm: str = Field(min_length=1, max_length=300, description="nome ou id do recurso, digitado")
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ActionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    resource_id: str
+    resource_native_id: str
+    action: str
+    reason: str | None
+    status: str
+    requested_by: str
+    requested_at: datetime
+    finished_at: datetime | None
+    result: dict
+
+
+class HubPrincipalIn(BaseModel):
+    principal_arn: str = Field(pattern=r"^arn:aws(-[a-z]+)*:iam::\d{12}:(user|role)/[\w+=,.@/-]+$")

@@ -90,6 +90,7 @@ def kc():
 PG_OWNER = os.environ.get("CV_TEST_PG_OWNER_URL")
 PG_APP = os.environ.get("CV_TEST_PG_APP_URL")
 TABLES = (
+    "action_request, health_event, resource, job, platform_setting, cloud_secret, "
     "document, cost_line, import_batch, account_assignment, cloud_account, connection, "
     "user_tenant_role, app_user, tenant, audit_log"
 )

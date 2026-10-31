@@ -11,7 +11,7 @@ from datetime import date
 from sqlalchemy import and_, select, update
 from sqlalchemy.orm import Session
 
-from app.models import AccountAssignment, CostLine
+from app.models import AccountAssignment, CostLine, HealthEvent, Resource
 
 
 class AllocationConflict(ValueError):
@@ -54,6 +54,48 @@ def _date_filter(rule: AccountAssignment):
 
 
 def reallocate_account(db: Session, cloud_account_id: str) -> None:
+    """Recalcula a empresa dona de custos, recursos e eventos de saúde da conta."""
+    _reallocate_costs(db, cloud_account_id)
+    reallocate_resources(db, cloud_account_id)
+
+
+def active_rules(db: Session, cloud_account_id: str, today: date) -> list[AccountAssignment]:
+    rules = db.scalars(
+        select(AccountAssignment).where(AccountAssignment.cloud_account_id == cloud_account_id)
+    ).all()
+    return [r for r in rules if (r.valid_from or date.min) <= today <= (r.valid_to or date.max)]
+
+
+def owner_for_tags(rules: list[AccountAssignment], tags: dict) -> str | None:
+    """Mesma prioridade dos custos: regra com tag > conta inteira."""
+    for r in rules:
+        if r.tag_key is not None and (tags or {}).get(r.tag_key) == r.tag_value:
+            return r.tenant_id
+    whole = [r for r in rules if r.tag_key is None]
+    return whole[0].tenant_id if whole else None
+
+
+def whole_account_owner(db: Session, cloud_account_id: str, today: date | None = None) -> str | None:
+    rules = active_rules(db, cloud_account_id, today or date.today())
+    whole = [r for r in rules if r.tag_key is None]
+    return whole[0].tenant_id if whole else None
+
+
+def reallocate_resources(db: Session, cloud_account_id: str, today: date | None = None) -> None:
+    rules = active_rules(db, cloud_account_id, today or date.today())
+    owners: dict[str, str | None] = {}
+    for res in db.scalars(select(Resource).where(Resource.cloud_account_id == cloud_account_id)):
+        res.tenant_id = owner_for_tags(rules, res.tags)
+        owners[res.id] = res.tenant_id
+    whole = [r for r in rules if r.tag_key is None]
+    account_owner = whole[0].tenant_id if whole else None
+    for ev in db.scalars(select(HealthEvent).where(HealthEvent.cloud_account_id == cloud_account_id)):
+        # Evento de um recurso segue o recurso; evento da conta só aparece se a conta é de uma empresa só
+        ev.tenant_id = owners.get(ev.resource_id) if ev.resource_id else account_owner
+    db.flush()
+
+
+def _reallocate_costs(db: Session, cloud_account_id: str) -> None:
     rules = db.scalars(
         select(AccountAssignment).where(AccountAssignment.cloud_account_id == cloud_account_id)
     ).all()

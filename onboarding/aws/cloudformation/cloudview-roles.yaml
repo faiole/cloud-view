@@ -16,6 +16,12 @@ Parameters:
     NoEcho: true
     MinLength: 16
     Description: ExternalId do cliente, mostrado na tela do cliente no painel
+  FocusExportBucket:
+    Type: String
+    Default: ""
+    Description: >
+      (Opcional, só na conta pagadora) bucket do Data Export FOCUS 1.0 em CSV.
+      Libera leitura somente desse bucket para o Cloud View.
   EnableQuickActions:
     Type: String
     AllowedValues: ["true", "false"]
@@ -24,6 +30,7 @@ Parameters:
 
 Conditions:
   CreateOperator: !Equals [!Ref EnableQuickActions, "true"]
+  HasFocusBucket: !Not [!Equals [!Ref FocusExportBucket, ""]]
 
 Resources:
   CloudViewReadOnly:
@@ -76,8 +83,13 @@ Resources:
                 Resource: "*"
               # Coleta nunca lê dados de aplicação nem segredos
               - Effect: Deny
+                Action: s3:GetObject
+                NotResource: !If
+                  - HasFocusBucket
+                  - !Sub arn:${AWS::Partition}:s3:::${FocusExportBucket}/*
+                  - !Sub arn:${AWS::Partition}:s3:::cloudview-no-bucket/*
+              - Effect: Deny
                 Action:
-                  - s3:GetObject
                   - secretsmanager:GetSecretValue
                   - ssm:GetParameter*
                   - kms:Decrypt
@@ -85,6 +97,22 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource: "*"
+
+  FocusExportRead:
+    Type: AWS::IAM::RolePolicy
+    Condition: HasFocusBucket
+    Properties:
+      RoleName: !Ref CloudViewReadOnly
+      PolicyName: cloudview-focus-export
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: [s3:ListBucket]
+            Resource: !Sub arn:${AWS::Partition}:s3:::${FocusExportBucket}
+          - Effect: Allow
+            Action: [s3:GetObject]
+            Resource: !Sub arn:${AWS::Partition}:s3:::${FocusExportBucket}/*
 
   CloudViewOperator:
     Type: AWS::IAM::Role
@@ -110,15 +138,11 @@ Resources:
                   - ec2:RebootInstances
                   - ec2:StartInstances
                   - ec2:StopInstances
-                  - rds:RebootDBInstance
-                  - rds:StartDBInstance
-                  - rds:StopDBInstance
-                  - ecs:UpdateService
                 Resource: "*"
                 Condition:
                   StringEquals: { aws:ResourceTag/cloudview-actions: enabled }
               - Effect: Allow
-                Action: ec2:CreateSnapshot
+                Action: ec2:DescribeInstances
                 Resource: "*"
 
 Outputs:

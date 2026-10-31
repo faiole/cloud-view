@@ -1,5 +1,15 @@
 # Onboarding AWS
 
+O jeito mais simples é pela tela **Conexões** do painel: ela gera o ExternalId e mostra os
+comandos abaixo já preenchidos. `CollectorPrincipalArn`/`ActionsPrincipalArn` são o ARN da
+identidade hub (instance profile ou usuário `cloudview-hub`).
+
+Parâmetros opcionais:
+- `FocusExportBucket`: bucket do Data Export FOCUS 1.0 em CSV (só na conta pagadora), para custos
+  com tags;
+- `EnableQuickActions=true`: cria a role de ações (reiniciar/ligar/desligar), que só age em
+  instâncias com a tag `cloudview-actions=enabled`.
+
 ## Conta avulsa
 1. No painel, abra o cliente e copie o **ExternalId**.
 2. Na conta do cliente, crie a stack com `cloudformation/cloudview-roles.yaml`:

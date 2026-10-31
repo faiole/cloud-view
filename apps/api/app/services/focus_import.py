@@ -12,6 +12,7 @@ import gzip
 import io
 import json
 from collections import defaultdict
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -94,14 +95,37 @@ def _provider(row: dict, default: str | None) -> str:
     return p
 
 
-def import_focus(
-    db: Session, data: bytes, *, filename: str | None, provider_hint: str | None, user_email: str | None
-) -> ImportResult:
+def read_focus_csv(data: bytes) -> Iterator[dict]:
     reader = csv.DictReader(_open_text(data))
     missing = REQUIRED - set(reader.fieldnames or [])
     if missing:
         raise ImportErrorInvalid(f"colunas FOCUS ausentes: {', '.join(sorted(missing))}")
+    yield from reader
 
+
+def import_focus(
+    db: Session, data: bytes, *, filename: str | None, provider_hint: str | None, user_email: str | None
+) -> ImportResult:
+    return ingest_rows(
+        db, read_focus_csv(data), filename=filename, provider_hint=provider_hint, user_email=user_email
+    )
+
+
+def ingest_rows(
+    db: Session,
+    rows: Iterable[dict],
+    *,
+    filename: str | None,
+    provider_hint: str | None,
+    user_email: str | None,
+    source: str = "focus_csv",
+    replace_range: tuple[date, date] | None = None,
+) -> ImportResult:
+    """Agrega linhas no layout FOCUS e grava, substituindo o período já existente das mesmas pagadoras.
+
+    `replace_range` força o intervalo substituído (ex.: mês inteiro consultado no Cost Explorer,
+    mesmo que alguns dias ainda não tenham custo).
+    """
     agg: dict[tuple, list[Decimal]] = defaultdict(lambda: [Decimal(0), Decimal(0)])
     accounts: dict[tuple[str, str], tuple[str | None, str, str | None]] = {}
     billing: dict[tuple[str, str], str | None] = {}
@@ -109,7 +133,7 @@ def import_focus(
     dmin: date | None = None
     dmax: date | None = None
 
-    for row in reader:
+    for row in rows:
         source_rows += 1
         prov = _provider(row, provider_hint)
         billing_id = row["BillingAccountId"].strip()
@@ -138,8 +162,10 @@ def import_focus(
     if source_rows == 0:
         raise ImportErrorInvalid("arquivo sem linhas")
 
+    if replace_range:
+        dmin, dmax = min(dmin, replace_range[0]), max(dmax, replace_range[1])
     batch = ImportBatch(
-        source="focus_csv",
+        source=source,
         filename=filename,
         provider=next(iter(billing))[0] if len(billing) == 1 else None,
         billing_account_id=next(iter(billing))[1] if len(billing) == 1 else None,

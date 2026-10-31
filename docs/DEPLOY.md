@@ -52,12 +52,27 @@ docker compose run --rm keycloak-seed
 
 O Caddy emite o certificado HTTPS sozinho na primeira requisição.
 
+## Conectar a AWS
+
+1. **Identidade hub** (tela *Conexões*):
+   - servidor numa EC2: anexe uma *instance profile* cuja role só tenha `sts:AssumeRole` em
+     `arn:aws:iam::*:role/CloudViewReadOnly` e `.../CloudViewOperator`, e informe o ARN dela.
+     Os containers acessam o metadata da EC2: ajuste o *hop limit* do IMDSv2 para 2
+     (`aws ec2 modify-instance-metadata-options --instance-id <id> --http-put-response-hop-limit 2`);
+   - qualquer outro lugar: crie o usuário IAM `cloudview-hub` com essa mesma permissão e cadastre a
+     chave. Ela é cifrada com a chave pública do cofre; só os workers conseguem usá-la.
+2. **Nova conexão**: informe a conta management (Organization) ou a conta avulsa. O painel gera o
+   ExternalId e mostra os comandos do CloudFormation (e do StackSet, para a Organization).
+3. Implante a stack, clique em **Testar** e depois em **Sincronizar agora**.
+4. Em *Contas de nuvem*, atribua as contas descobertas às empresas.
+
 ## Operação
 
 | Tarefa | Como |
 |---|---|
 | Atualizar | `git pull && docker compose up -d --build` (as migrações rodam sozinhas) |
-| Logs | `docker compose logs -f api` |
+| Logs | `docker compose logs -f api worker worker-actions` |
+| Mais coleta em paralelo | `docker compose up -d --scale worker=3` |
 | Backup | diário, automático, no volume `backups` (14 dias). Copie para fora da VM, ex.: `docker compose cp backup:/backups ./backups` |
 | Restaurar | `docker compose exec -T postgres pg_restore -U postgres -d cloudview --clean < arquivo.dump` |
 | Guardar fora da VM | o `.env` e o volume `vault-private` (sem eles não dá para ler as credenciais cifradas) |
@@ -73,5 +88,5 @@ O Caddy emite o certificado HTTPS sozinho na primeira requisição.
 - Só o Caddy publica portas; banco, Redis, Keycloak e API ficam na rede interna do Docker.
 - O console do Keycloak (`/auth/admin`) só abre a partir de `CV_ADMIN_CIDRS`.
 - O `setup.sh` gera senhas aleatórias e grava o `.env` com permissão 600. Nunca versione o `.env`.
-- A chave privada do cofre fica no volume `vault-private`, montado só por quem precisa ler
-  credenciais (workers, Fase 1). A API monta apenas a chave pública.
+- A chave privada do cofre fica no volume `vault-private`, montado só pelos workers. A API monta
+  apenas a chave pública.

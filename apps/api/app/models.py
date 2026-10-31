@@ -131,6 +131,25 @@ class Connection(Base):
     secret_ref: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
+    # --- Coleta automática (Fase 1). Conexões criadas só por importação ficam com role_arn vazio.
+    role_arn: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    member_role_name: Mapped[str] = mapped_column(String(64), default="CloudViewReadOnly")
+    operator_role_name: Mapped[str] = mapped_column(String(64), default="CloudViewOperator")
+    regions: Mapped[list | None] = mapped_column(JSON, nullable=True)  # None = todas as habilitadas
+    cost_source: Mapped[str] = mapped_column(
+        String(32), default="manual"
+    )  # cost_explorer | focus_s3 | manual
+    focus_s3_uri: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    collect_invoices: Mapped[bool] = mapped_column(Boolean, default=True)
+    status: Mapped[str] = mapped_column(String(16), default="manual")  # manual | pending | ok | error
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def is_organization(self) -> bool:
+        return self.kind == "aws_organization"
+
 
 class CloudSecret(Base):
     """Credencial de nuvem cifrada pelo cofre (`app/vault.py`). A API grava; só workers leem."""
@@ -160,6 +179,10 @@ class CloudAccount(Base):
         ForeignKey("connection.id", ondelete="SET NULL"), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    status: Mapped[str | None] = mapped_column(String(16), nullable=True)  # ACTIVE/SUSPENDED (Organizations)
+    collect: Mapped[bool] = mapped_column(Boolean, default=True)  # coletar inventário/saúde desta conta
+    last_inventory_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     connection: Mapped[Connection | None] = relationship()
     assignments: Mapped[list["AccountAssignment"]] = relationship(
@@ -278,3 +301,128 @@ class Document(Base):
     storage_key: Mapped[str] = mapped_column(String(500))
     uploaded_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+# --- Fase 1: coleta, inventário, saúde e ações --------------------------------------------------
+
+
+class PlatformSetting(Base):
+    __tablename__ = "platform_setting"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class Job(Base):
+    """Fila de trabalho dos workers, no próprio Postgres (SELECT ... FOR UPDATE SKIP LOCKED)."""
+
+    __tablename__ = "job"
+    __table_args__ = (
+        Index("ix_job_claim", "status", "run_after"),
+        Index("ix_job_dedupe", "dedupe_key", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    kind: Mapped[str] = mapped_column(String(32))
+    connection_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    cloud_account_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    dedupe_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued | running | done | error
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    run_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Resource(Base):
+    """Recurso coletado (instância, volume, IP, VPC, subnet, security group).
+
+    `tenant_id` segue as mesmas regras de `AccountAssignment` dos custos (conta inteira ou tag).
+    """
+
+    __tablename__ = "resource"
+    __table_args__ = (
+        UniqueConstraint("cloud_account_id", "region", "type", "native_id"),
+        Index("ix_resource_tenant_type", "tenant_id", "type"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    cloud_account_id: Mapped[str] = mapped_column(
+        ForeignKey("cloud_account.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[str] = mapped_column(String(16))
+    region: Mapped[str] = mapped_column(String(32))
+    type: Mapped[str] = mapped_column(
+        String(32)
+    )  # ec2_instance | ebs_volume | elastic_ip | vpc | subnet | security_group
+    native_id: Mapped[str] = mapped_column(String(128))
+    name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    instance_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    vcpu: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    memory_mib: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    platform: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    private_ips: Mapped[list] = mapped_column(JSON, default=list)
+    public_ips: Mapped[list] = mapped_column(JSON, default=list)
+    vpc_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    subnet_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    security_groups: Mapped[list] = mapped_column(JSON, default=list)
+    tags: Mapped[dict] = mapped_column(JSONType, default=dict)
+    attributes: Mapped[dict] = mapped_column(JSON, default=dict)
+    findings: Mapped[list] = mapped_column(JSON, default=list)  # dicas/alertas simples (ex.: porta 22 aberta)
+    health: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )  # ok | impaired | initializing | unknown
+    health_details: Mapped[dict] = mapped_column(JSON, default=dict)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    account: Mapped[CloudAccount] = relationship()
+
+
+class HealthEvent(Base):
+    __tablename__ = "health_event"
+    __table_args__ = (
+        UniqueConstraint("source", "native_id", "cloud_account_id"),
+        Index("ix_health_event_tenant", "tenant_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    cloud_account_id: Mapped[str] = mapped_column(ForeignKey("cloud_account.id", ondelete="CASCADE"))
+    resource_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    source: Mapped[str] = mapped_column(String(32))  # aws_health | ec2_scheduled | ec2_status
+    native_id: Mapped[str] = mapped_column(String(400))
+    service: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    region: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    category: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )  # issue | scheduledChange | accountNotification
+    status: Mapped[str] = mapped_column(String(16))  # open | upcoming | closed
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ActionRequest(Base):
+    __tablename__ = "action_request"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(36), index=True)
+    resource_id: Mapped[str] = mapped_column(String(36))
+    resource_native_id: Mapped[str] = mapped_column(String(128))
+    action: Mapped[str] = mapped_column(String(16))  # reboot | start | stop
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued | running | succeeded | failed
+    requested_by: Mapped[str] = mapped_column(String(320))
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    result: Mapped[dict] = mapped_column(JSON, default=dict)

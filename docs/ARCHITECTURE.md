@@ -31,7 +31,7 @@ flowchart LR
     API <--> RD[(Redis<br/>sessões)]
     API --> DOC[(Documentos<br/>volume cifrado ou S3)]
     API -->|só chave pública| VAULT[Cofre de credenciais<br/>no Postgres]
-    WK[Workers<br/>Fase 1] -->|chave privada| VAULT
+    WK[Workers<br/>coleta e ações] -->|chave privada| VAULT
     WK --> PG
     WK -->|AssumeRole| AWS[(AWS / Organizations)]
     WK -->|Federação / SP| AZ[(Azure)]
@@ -51,7 +51,7 @@ portas (80/443).
 | Entrada | **Caddy** | HTTPS automático (Let's Encrypt), um único domínio para painel, API e login |
 | Frontend | **Next.js (React) + TypeScript** | Tabelas e gráficos rápidos |
 | API | **Python 3.12 + FastAPI**, SQLAlchemy 2, Pydantic | SDKs oficiais mais completos das 3 nuvens são em Python |
-| Workers (Fase 1) | Python, fila no **Redis** (ou Postgres) | Sem serviço de fila de nuvem; paralelismo por conta/região |
+| Workers | Python, fila e agendador no **Postgres** (`FOR UPDATE SKIP LOCKED`) | Sem serviço de fila de nuvem; vários workers em paralelo |
 | Identidade | **Keycloak** (OIDC) — senha + **TOTP** obrigatório | MFA, política de senha, bloqueio por força bruta, convites por e-mail |
 | Banco | **PostgreSQL 16** (container, ou gerenciado se preferir) | Relacional + custos diários; particionamento por mês quando crescer |
 | Cache / sessões | **Redis** | Sessões server-side, cache de KPIs |
@@ -319,7 +319,7 @@ Internet ──► Caddy :80/:443 (TLS automático)
                ├── /        → web (Next.js)
                ├── /api/*   → api (FastAPI)
                └── /auth/*  → keycloak     (console /auth/admin só de redes liberadas)
-Rede interna Docker: postgres · redis · migrate · vault-keys · backup · (workers na Fase 1)
+Rede interna Docker: postgres · redis · migrate · vault-keys · backup · worker · worker-actions
 Volumes: pgdata · documents (cifrado) · vault-private · vault-public · backups · caddy-data
 ```
 
@@ -360,7 +360,7 @@ cloud-view/
 |---|---|---|
 | **0 – Fundação** ✅ | Keycloak com MFA obrigatório, RBAC, empresas, auditoria imutável, RLS | 2–3 semanas |
 | **0.5 – Acessos e faturamento** ✅ | Administração de usuários (convite, desativar, reset de MFA), papéis por empresa, atribuição de contas (inclusive dividida por tag), importação FOCUS das 3 nuvens, relatórios por conta/serviço/tag com CSV, invoices e notas fiscais, cofre portátil, stack Docker única | 2–3 semanas |
-| **1 – Coleta AWS** | Conexões AWS / Organizations, coleta automática de custos (Data Exports) e invoices, inventário + rede, saúde, ações rápidas | 4–6 semanas |
+| **1 – Coleta AWS** ✅ | Conexões AWS / Organizations, coleta automática de custos (Cost Explorer ou FOCUS no S3) e invoices, inventário + rede, saúde, ações rápidas — ver [FASE-1.md](FASE-1.md) | 4–6 semanas |
 | **2 – Otimização e alertas** | Cost Optimization Hub/Compute Optimizer + regras próprias, orçamentos, anomalias, notificações Teams/Slack/e-mail, patches | 3–4 semanas |
 | **3 – Azure** | Coleta automática (Cost Management, Resource Graph), Advisor, Resource Health, ações em VM | 3–4 semanas |
 | **4 – OCI** | Coleta automática (FOCUS reports, Search), Cloud Advisor, Monitoring, ações em instância | 3–4 semanas |

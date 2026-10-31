@@ -25,13 +25,13 @@ Abra http://localhost:8080. Para servidor com HTTPS (qualquer nuvem), veja [docs
 - [Arquitetura](docs/ARCHITECTURE.md)
 - [Acessos, custos e faturamento por empresa](docs/ACESSOS-E-FATURAMENTO.md)
 - [Como subir (local e servidor)](docs/DEPLOY.md)
-- [Fase 0](docs/FASE-0.md)
+- [Fase 0](docs/FASE-0.md) · [Fase 1 — coleta AWS](docs/FASE-1.md)
 
 ## Estrutura
 
 ```
-docker-compose.yml  stack completa: Caddy, painel, API, Keycloak, Postgres, Redis, backup
-apps/api            FastAPI: login OIDC, papéis, custos (FOCUS), relatórios, documentos, cofre
+docker-compose.yml  stack completa: Caddy, painel, API, workers, Keycloak, Postgres, Redis, backup
+apps/api            FastAPI + workers: login, papéis, custos, relatórios, documentos, coleta AWS, ações
 apps/web            Painel em Next.js
 infra/              Caddy, Keycloak, init do Postgres, Terraform opcional (aws-ecs)
 onboarding/aws      CloudFormation das roles CloudViewReadOnly / CloudViewOperator

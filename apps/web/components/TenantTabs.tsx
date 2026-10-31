@@ -9,6 +9,9 @@ import { useMe } from "@/lib/useMe";
 const TABS: { href: string; label: string; perm: Perm | null }[] = [
   { href: "", label: "Custos", perm: "costs.read" },
   { href: "/relatorios", label: "Relatórios", perm: "reports.read" },
+  { href: "/recursos", label: "Recursos", perm: "resources.read" },
+  { href: "/saude", label: "Saúde", perm: "resources.read" },
+  { href: "/rede", label: "Rede", perm: "resources.read" },
   { href: "/documentos", label: "Invoices e notas", perm: "invoices.read" },
   { href: "/contas", label: "Contas", perm: "costs.read" },
   { href: "/acessos", label: "Acessos", perm: "members.manage" },

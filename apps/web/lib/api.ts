@@ -202,3 +202,109 @@ export const kindLabel: Record<string, string> = {
   statement: "Demonstrativo",
   other: "Outro",
 };
+
+// --- Fase 1 --------------------------------------------------------------------------------------
+
+export type Finding = { code: string; severity: "critical" | "warning" | "info"; message: string };
+export type Resource = {
+  id: string;
+  account_native_id: string;
+  account_name: string | null;
+  region: string;
+  type: string;
+  native_id: string;
+  name: string | null;
+  state: string | null;
+  instance_type: string | null;
+  vcpu: number | null;
+  memory_mib: number | null;
+  platform: string | null;
+  private_ips: string[];
+  public_ips: string[];
+  vpc_id: string | null;
+  subnet_id: string | null;
+  security_groups: { id: string; name: string | null }[];
+  tags: Record<string, string>;
+  attributes: Record<string, unknown>;
+  findings: Finding[];
+  health: string | null;
+  health_details: Record<string, string | null>;
+  collected_at: string;
+};
+export type HealthEvent = {
+  id: string;
+  source: string;
+  service: string | null;
+  region: string | null;
+  category: string | null;
+  status: string;
+  title: string;
+  description: string | null;
+  start_at: string | null;
+  end_at: string | null;
+};
+export type HealthSummary = { instances: number; running: number; impaired: Resource[]; events: HealthEvent[]; last_collected_at: string | null };
+export type NetworkSummary = {
+  vpcs: { vpc: Resource; subnets: Resource[]; instances: number; exposed_instances: Resource[] }[];
+  open_security_groups: Resource[];
+  findings_by_code: Record<string, number>;
+};
+export type ActionReq = {
+  id: string;
+  resource_id: string;
+  resource_native_id: string;
+  action: string;
+  reason: string | null;
+  status: string;
+  requested_by: string;
+  requested_at: string;
+  finished_at: string | null;
+  result: Record<string, string>;
+};
+export type ConnectionDetail = {
+  id: string;
+  kind: string;
+  native_id: string;
+  name: string;
+  role_arn: string | null;
+  external_id: string | null;
+  member_role_name: string;
+  regions: string[] | null;
+  cost_source: string;
+  focus_s3_uri: string | null;
+  collect_invoices: boolean;
+  status: string;
+  last_error: string | null;
+  last_sync_at: string | null;
+  accounts: number;
+};
+export type Job = {
+  id: string;
+  kind: string;
+  status: string;
+  attempts: number;
+  error: string | null;
+  result: Record<string, unknown>;
+  created_at: string;
+  finished_at: string | null;
+};
+export type HubStatus = { mode: "default" | "vault"; principal_arn: string | null; access_key_hint: string | null; updated_at: string | null };
+
+export const actionLabel: Record<string, string> = { reboot: "Reiniciar", start: "Ligar", stop: "Desligar" };
+export const typeLabel: Record<string, string> = {
+  ec2_instance: "Instâncias",
+  ebs_volume: "Volumes",
+  elastic_ip: "IPs elásticos",
+  vpc: "VPCs",
+  subnet: "Subnets",
+  security_group: "Security groups",
+};
+
+export function ago(iso: string | null): string {
+  if (!iso) return "nunca";
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 90) return "agora";
+  if (s < 3600) return `há ${Math.round(s / 60)} min`;
+  if (s < 86400) return `há ${Math.round(s / 3600)} h`;
+  return `há ${Math.round(s / 86400)} d`;
+}

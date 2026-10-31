@@ -151,6 +151,36 @@ services:
       vault-keys: { condition: service_completed_successfully }
       redis: { condition: service_started }
 
+  # Coleta (custos, invoices, inventário, rede, saúde) + agendador. Escale com --scale worker=N.
+  worker:
+    <<: *restart
+    build: ./apps/api
+    command: ["python", "-m", "app.worker", "--exclude", "action"]
+    environment: &worker-env
+      <<: *api-env
+      CV_VAULT_PRIVATE_KEYS: /run/vault-private/vault-private.pem
+      AWS_EC2_METADATA_SERVICE_ENDPOINT_MODE: IPv4
+    volumes:
+      - documents:/data/documents
+      - vault-public:/run/vault-public:ro
+      - vault-private:/run/vault-private:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      vault-keys: { condition: service_completed_successfully }
+
+  # Só ações rápidas (reiniciar/ligar/desligar), para responderem sem esperar a coleta
+  worker-actions:
+    <<: *restart
+    build: ./apps/api
+    command: ["python", "-m", "app.worker", "--only", "action", "--no-schedule"]
+    environment: *worker-env
+    volumes:
+      - vault-public:/run/vault-public:ro
+      - vault-private:/run/vault-private:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      vault-keys: { condition: service_completed_successfully }
+
   web:
     <<: *restart
     build: ./apps/web

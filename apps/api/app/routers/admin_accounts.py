@@ -5,8 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
-from app.models import AccountAssignment, CloudAccount, Connection, ImportBatch, Tenant
-from app.schemas import AccountOut, AccountUpdate, AssignmentIn, AssignmentOut, ConnectionOut, ImportOut
+from app.models import AccountAssignment, CloudAccount, ImportBatch, Tenant
+from app.schemas import AccountOut, AccountUpdate, AssignmentIn, AssignmentOut, ImportOut
 from app.security.deps import require_admin, require_recent_mfa, scoped_db
 from app.security.session import SessionData
 from app.services import audit
@@ -27,11 +27,6 @@ def _account_out(a: CloudAccount) -> AccountOut:
         connection_native_id=a.connection.native_id if a.connection else None,
         tenants=sorted({r.tenant.name for r in a.assignments}),
     )
-
-
-@router.get("/connections", response_model=list[ConnectionOut])
-def list_connections(_: SessionData = Depends(require_admin), db: Session = Depends(scoped_db)):
-    return db.scalars(select(Connection).order_by(Connection.provider, Connection.name)).all()
 
 
 @router.get("/accounts", response_model=list[AccountOut])

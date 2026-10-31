@@ -2,7 +2,18 @@ from fastapi import FastAPI
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import get_settings
-from app.routers import admin_accounts, admin_users, audit, auth, documents, health, reports, tenants
+from app.routers import (
+    admin_accounts,
+    admin_users,
+    audit,
+    auth,
+    connections,
+    documents,
+    health,
+    inventory,
+    reports,
+    tenants,
+)
 
 
 class SecurityHeaders(BaseHTTPMiddleware):
@@ -33,9 +44,11 @@ def create_app() -> FastAPI:
         auth.router,
         tenants.router,
         reports.router,
+        inventory.router,
         documents.router,
         admin_users.router,
         admin_accounts.router,
+        connections.router,
         audit.router,
     ):
         app.include_router(r, prefix="/api")

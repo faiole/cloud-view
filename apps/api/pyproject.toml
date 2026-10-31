@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "fakeredis>=2.23", "ruff>=0.6"]
+dev = ["pytest>=8", "fakeredis>=2.23", "ruff>=0.6", "moto[ec2,organizations,sts,s3]>=5.0"]
 
 [build-system]
 requires = ["hatchling"]

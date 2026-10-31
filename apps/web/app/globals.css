@@ -107,3 +107,18 @@ label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--i
 .assign { padding: 8px 0; }
 button:disabled { opacity: .5; cursor: not-allowed; }
 @media (max-width: 760px) { .bar { grid-template-columns: minmax(0, 1fr) auto; } .bar .track { grid-column: 1 / -1; grid-row: 2; } }
+
+/* Fase 1: coleta, recursos, rede */
+.findings { margin: 0; padding-left: 16px; font-size: 13px; }
+.findings li { margin-bottom: 2px; }
+.findings .sev-critical { color: var(--bad); }
+.findings .sev-warning { color: var(--warn); }
+.findings .sev-info { color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+.chip b { margin-left: 4px; }
+.chip-bad { color: var(--bad); border-color: currentColor; }
+pre.code { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; margin: 0; }
+.onboarding p { margin: 0; }
+.small-value { font-size: 18px; }
+td.small, .small { font-size: 12.5px; }
