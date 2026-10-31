@@ -1,32 +1,39 @@
 # Cloud View
 
-Painel multi-cloud (AWS, Azure e OCI) e multi-cliente: custos e pagamentos, cost optimization,
-saúde de instâncias e serviços, rede, inventário, ações rápidas, alertas, atualizações e
-recomendações. Login com senha e MFA obrigatório; credenciais guardadas com segurança.
+Painel multi-cloud (AWS, Azure e OCI) e multi-empresa: custos e faturamento, relatórios por conta
+e tag, invoices e notas fiscais, saúde, rede, ações rápidas e alertas. Login com senha e MFA
+obrigatório; cada empresa vê só os próprios dados, mesmo com contas espalhadas em várias
+Organizations.
 
-- Arquitetura completa: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- O que a Fase 0 entrega e como subir: [docs/FASE-0.md](docs/FASE-0.md)
+## Começar
+
+```bash
+./scripts/setup.sh
+```
+
+```bash
+docker compose up -d --build
+```
+
+```bash
+docker compose run --rm keycloak-seed
+```
+
+Abra http://localhost:8080. Para servidor com HTTPS (qualquer nuvem), veja [docs/DEPLOY.md](docs/DEPLOY.md).
+
+## Documentação
+- [Arquitetura](docs/ARCHITECTURE.md)
+- [Acessos, custos e faturamento por empresa](docs/ACESSOS-E-FATURAMENTO.md)
+- [Como subir (local e servidor)](docs/DEPLOY.md)
+- [Fase 0](docs/FASE-0.md)
 
 ## Estrutura
 
 ```
-apps/api        API/BFF em FastAPI: login OIDC, sessões, RBAC por cliente, auditoria
-apps/web        Painel em Next.js
-infra/keycloak  Realm do Keycloak (senha + TOTP obrigatório) e imagem de produção
-infra/terraform Conta hub na AWS: VPC, ECS Fargate, RDS, Redis, SQS, KMS, Secrets Manager, ALB, WAF
-infra/local     Inicialização do Postgres local
-onboarding/aws  CloudFormation das roles CloudViewReadOnly / CloudViewOperator (conta ou Organization)
+docker-compose.yml  stack completa: Caddy, painel, API, Keycloak, Postgres, Redis, backup
+apps/api            FastAPI: login OIDC, papéis, custos (FOCUS), relatórios, documentos, cofre
+apps/web            Painel em Next.js
+infra/              Caddy, Keycloak, init do Postgres, Terraform opcional (aws-ecs)
+onboarding/aws      CloudFormation das roles CloudViewReadOnly / CloudViewOperator
+samples/            Arquivo FOCUS de exemplo (empresa A em 3 Organizations)
 ```
-
-## Rodar localmente
-
-```bash
-cp .env.example .env
-```
-
-```bash
-docker compose up --build
-```
-
-Abra http://localhost:3000 e entre com `admin@cloudview.local` / `ChangeMe!12345`.
-No primeiro acesso o Keycloak pede uma nova senha e o cadastro do autenticador (TOTP).

@@ -1,93 +1,194 @@
-# Ambiente local da Fase 0: painel + API + Keycloak (MFA) + Postgres + Redis
-# Uso: cp .env.example .env && docker compose up --build  →  http://localhost:3000
+# Cloud View — mesma stack na sua máquina e em uma VM de qualquer nuvem (AWS, Azure, OCI).
+#
+#   ./scripts/setup.sh            # gera .env com segredos aleatórios (uma vez)
+#   docker compose up -d --build
+#   docker compose run --rm keycloak-seed   # cria o primeiro administrador
+#
+# Só o Caddy publica portas. Banco, Redis, Keycloak e API ficam na rede interna.
 name: cloudview
 
 x-api-env: &api-env
-  CV_ENV: dev
-  CV_DATABASE_URL: postgresql+psycopg://cloudview_app:cloudview_app@postgres:5432/cloudview
-  CV_MIGRATION_DATABASE_URL: postgresql+psycopg://cloudview_owner:cloudview_owner@postgres:5432/cloudview
-  CV_REDIS_URL: redis://redis:6379/0
-  CV_PUBLIC_URL: http://localhost:3000
-  CV_OIDC_ISSUER: http://localhost:8080/realms/cloudview
-  CV_OIDC_INTERNAL_BASE: http://keycloak:8080/realms/cloudview
+  CV_ENV: ${CV_ENV:-dev}
+  CV_PUBLIC_URL: ${CV_PUBLIC_URL}
+  CV_DATABASE_URL: postgresql+psycopg://cloudview_app:${APP_DB_PASSWORD}@postgres:5432/cloudview
+  CV_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+  CV_OIDC_ISSUER: ${CV_PUBLIC_URL}/auth/realms/cloudview
+  CV_OIDC_INTERNAL_BASE: http://keycloak:8080/auth/realms/cloudview
   CV_OIDC_CLIENT_ID: cloudview-bff
-  CV_OIDC_CLIENT_SECRET: ${KC_BFF_CLIENT_SECRET:-dev-only-secret-change-me}
-  CV_COOKIE_SECURE: "false"
+  CV_OIDC_CLIENT_SECRET: ${KC_BFF_CLIENT_SECRET}
+  CV_KC_ADMIN_CLIENT_SECRET: ${KC_ADMIN_API_CLIENT_SECRET}
+  CV_COOKIE_SECURE: ${CV_COOKIE_SECURE:-true}
+  CV_DOCUMENTS_KEY: ${DOCUMENTS_KEY}
+  CV_STORAGE_BACKEND: ${CV_STORAGE_BACKEND:-local}
+  CV_DOCUMENTS_BUCKET: ${CV_DOCUMENTS_BUCKET:-}
+  CV_S3_ENDPOINT_URL: ${CV_S3_ENDPOINT_URL:-}
+  CV_VAULT_PUBLIC_KEY: /run/vault-public/vault-public.pem
+
+x-restart: &restart
+  restart: unless-stopped
 
 services:
+  caddy:
+    <<: *restart
+    image: caddy:2.8.4-alpine
+    environment:
+      CV_SITE_ADDRESS: ${CV_SITE_ADDRESS:-http://}
+      CV_ADMIN_CIDRS: ${CV_ADMIN_CIDRS:-private_ranges}
+    ports:
+      - "${CV_HTTP_PORT:-80}:80"
+      - "${CV_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on: [web, api, keycloak]
+
   postgres:
+    <<: *restart
     image: postgres:16.6-alpine
     environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      OWNER_DB_PASSWORD: ${OWNER_DB_PASSWORD}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./infra/local/postgres-init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
-    ports: ["127.0.0.1:5432:5432"]
+      - ./infra/local/postgres-init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 3s
-      retries: 20
+      interval: 5s
+      retries: 30
 
   redis:
+    <<: *restart
     image: redis:7.4-alpine
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
-    ports: ["127.0.0.1:6379:6379"]
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--save", "", "--appendonly", "no"]
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.1.4
-    command: ["start-dev", "--import-realm"]
+    <<: *restart
+    build: ./infra/keycloak
     environment:
-      KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: keycloak
-      KC_HOSTNAME: http://localhost:8080
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_HOSTNAME: ${CV_PUBLIC_URL}/auth
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-kcadmin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:-kcadmin}
-      KC_BFF_CLIENT_SECRET: ${KC_BFF_CLIENT_SECRET:-dev-only-secret-change-me}
-      CV_PUBLIC_URL: http://localhost:3000
-    volumes:
-      - ./infra/keycloak/realm-cloudview.json:/opt/keycloak/data/import/realm-cloudview.json:ro
-    ports: ["127.0.0.1:8080:8080"]
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_BOOTSTRAP_ADMIN_USERNAME: kcadmin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
+      KC_BFF_CLIENT_SECRET: ${KC_BFF_CLIENT_SECRET}
+      KC_ADMIN_API_CLIENT_SECRET: ${KC_ADMIN_API_CLIENT_SECRET}
+      CV_PUBLIC_URL: ${CV_PUBLIC_URL}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_FROM: ${SMTP_FROM:-nao-responda@cloudview.local}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
+      SMTP_AUTH: ${SMTP_AUTH:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /auth/health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      retries: 30
+      start_period: 30s
     depends_on:
       postgres: { condition: service_healthy }
 
   keycloak-seed:
-    image: quay.io/keycloak/keycloak:26.1.4
-    entrypoint: ["/bin/bash", "/seed/dev-seed.sh"]
+    build: ./infra/keycloak
+    entrypoint: ["/bin/bash", "/opt/cloudview/dev-seed.sh"]
     environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-kcadmin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:-kcadmin}
-      DEV_ADMIN_EMAIL: ${DEV_ADMIN_EMAIL:-admin@cloudview.local}
-      DEV_ADMIN_PASSWORD: ${DEV_ADMIN_PASSWORD:-ChangeMe!12345}
+      KC_BOOTSTRAP_ADMIN_USERNAME: kcadmin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD}
+      FIRST_ADMIN_EMAIL: ${FIRST_ADMIN_EMAIL:-admin@cloudview.local}
+      FIRST_ADMIN_PASSWORD: ${FIRST_ADMIN_PASSWORD:-ChangeMe!12345}
+    depends_on:
+      keycloak: { condition: service_healthy }
+    profiles: ["tools"]
+
+  # Gera o par de chaves do cofre na primeira subida. A API só monta a pública.
+  vault-keys:
+    build: ./apps/api
+    user: "0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        python -m app.vault keygen /vault-private &&
+        cp /vault-private/vault-public.pem /vault-public/vault-public.pem &&
+        chown -R 10001 /vault-private /vault-public && chmod 600 /vault-private/vault-private.pem
     volumes:
-      - ./infra/keycloak/dev-seed.sh:/seed/dev-seed.sh:ro
-    depends_on: [keycloak]
+      - vault-private:/vault-private
+      - vault-public:/vault-public
     restart: "no"
 
   migrate:
     build: ./apps/api
-    command: ["alembic", "upgrade", "head"]
-    environment: *api-env
+    command: ["python", "-m", "app.bootstrap"]
+    environment:
+      DB_HOST: postgres
+      DB_NAME: cloudview
+      DB_SSLMODE: disable
+      DB_OWNER_USER: cloudview_owner
+      DB_OWNER_PASSWORD: ${OWNER_DB_PASSWORD}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"
 
   api:
+    <<: *restart
     build: ./apps/api
     environment: *api-env
-    ports: ["127.0.0.1:8000:8000"]
+    volumes:
+      - documents:/data/documents
+      - vault-public:/run/vault-public:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/healthz')"]
+      interval: 10s
+      retries: 10
     depends_on:
       migrate: { condition: service_completed_successfully }
+      vault-keys: { condition: service_completed_successfully }
       redis: { condition: service_started }
 
   web:
+    <<: *restart
     build: ./apps/web
     environment:
       API_INTERNAL_URL: http://api:8000
-    ports: ["127.0.0.1:3000:3000"]
-    depends_on: [api]
+
+  # Backup diário do Postgres (mantém 14 dias) no volume `backups`
+  backup:
+    <<: *restart
+    image: postgres:16.6-alpine
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        while true; do
+          ts=$$(date +%Y%m%d-%H%M);
+          for db in cloudview keycloak; do
+            pg_dump -h postgres -U postgres -Fc $$db > /backups/$$db-$$ts.dump;
+          done;
+          find /backups -name '*.dump' -mtime +14 -delete;
+          sleep 86400;
+        done
+    volumes:
+      - backups:/backups
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  # Caixa de e-mail de teste (convites, redefinição de senha): http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports: ["127.0.0.1:8025:8025"]
+    profiles: ["dev"]
 
 volumes:
   pgdata:
+  caddy-data:
+  documents:
+  backups:
+  vault-private:
+  vault-public:

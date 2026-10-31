@@ -111,7 +111,12 @@ def callback(
             user = AppUser(email=email)
             db.add(user)
         user.keycloak_sub = claims["sub"]
-    user.name = claims.get("name")
+    if user.disabled:
+        audit.record(
+            db, request, "auth.login", outcome="failure", details={"error": "user_disabled", "email": email}
+        )
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "user_disabled")
+    user.name = claims.get("name") or user.name
     user.last_login_at = datetime.now(UTC)
     db.flush()
 

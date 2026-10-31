@@ -1,13 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import AppUser, Tenant, TenantRole, UserTenantRole
+from app.models import AccountAssignment, AppUser, Tenant, UserTenantRole
+from app.permissions import Perm
 from app.schemas import MemberOut, MemberPut, TenantCreate, TenantOut, TenantUpdate
 from app.security.deps import current_session, require_admin, require_recent_mfa, scoped_db, tenant_access
 from app.security.session import SessionData
 from app.services import audit
+from app.services.allocation import reallocate_account
+from app.services.keycloak_admin import KeycloakAdmin, KeycloakAdminError, get_kc_admin
+from app.services.users import ensure_user
 
 router = APIRouter(prefix="/tenants", tags=["tenants"])
 
@@ -82,15 +86,39 @@ def delete_tenant(
     db: Session = Depends(scoped_db),
 ):
     t = _get(db, tenant_id)
+    accounts = db.scalars(
+        select(AccountAssignment.cloud_account_id).where(AccountAssignment.tenant_id == tenant_id).distinct()
+    ).all()
     audit.record(db, request, "tenant.delete", user=user, tenant_id=t.id, target=t.slug)
+    db.execute(delete(AccountAssignment).where(AccountAssignment.tenant_id == tenant_id))
     db.delete(t)
+    db.flush()
+    # Custos das contas do cliente excluído voltam a ficar sem dono (visíveis só ao administrador)
+    for acc in accounts:
+        reallocate_account(db, acc)
 
 
-# --- Membros ------------------------------------------------------------------------------------
+# --- Membros: administrador da plataforma ou administrador da própria empresa ------------------
+
+
+def _member_out(u: AppUser, role: str, sent: bool | None = None) -> MemberOut:
+    return MemberOut(
+        user_id=u.id,
+        email=u.email,
+        name=u.name,
+        role=role,
+        disabled=u.disabled,
+        pending=u.last_login_at is None,
+        invite_email_sent=sent,
+    )
 
 
 @router.get("/{tenant_id}/members", response_model=list[MemberOut])
-def list_members(tenant_id: str, _: SessionData = Depends(require_admin), db: Session = Depends(scoped_db)):
+def list_members(
+    tenant_id: str,
+    _: SessionData = Depends(tenant_access(Perm.members_manage)),
+    db: Session = Depends(scoped_db),
+):
     _get(db, tenant_id)
     rows = db.execute(
         select(AppUser, UserTenantRole.role)
@@ -98,7 +126,7 @@ def list_members(tenant_id: str, _: SessionData = Depends(require_admin), db: Se
         .where(UserTenantRole.tenant_id == tenant_id)
         .order_by(AppUser.email)
     ).all()
-    return [MemberOut(user_id=u.id, email=u.email, name=u.name, role=r) for u, r in rows]
+    return [_member_out(u, r) for u, r in rows]
 
 
 @router.put("/{tenant_id}/members", response_model=MemberOut)
@@ -106,29 +134,29 @@ def put_member(
     tenant_id: str,
     body: MemberPut,
     request: Request,
-    _: SessionData = Depends(require_admin),
+    _: SessionData = Depends(tenant_access(Perm.members_manage)),
     user: SessionData = Depends(require_recent_mfa),
     db: Session = Depends(scoped_db),
+    kc: KeycloakAdmin = Depends(get_kc_admin),
 ):
-    """Concede/atualiza acesso. O usuário pode ainda não ter logado: é pré-cadastrado pelo e-mail."""
+    """Concede ou altera o acesso de alguém a este cliente. Se a pessoa ainda não existe, é
+    criada no Keycloak e recebe um e-mail para definir senha e cadastrar o MFA."""
     _get(db, tenant_id)
-    email = body.email.lower()
-    member = db.scalar(select(AppUser).where(AppUser.email == email))
-    if member is None:
-        member = AppUser(email=email)
-        db.add(member)
-        db.flush()
+    try:
+        member, sent = ensure_user(db, kc, body.email, body.name)
+    except KeycloakAdminError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "identity_provider_unavailable") from e
     link = db.scalar(
         select(UserTenantRole).where(
             UserTenantRole.user_id == member.id, UserTenantRole.tenant_id == tenant_id
         )
     )
-    previous = link.role.value if link else None
+    previous = link.role if link else None
     if link is None:
-        link = UserTenantRole(user_id=member.id, tenant_id=tenant_id, role=body.role)
+        link = UserTenantRole(user_id=member.id, tenant_id=tenant_id, role=body.role.value)
         db.add(link)
     else:
-        link.role = body.role
+        link.role = body.role.value
     db.flush()
     audit.record(
         db,
@@ -136,10 +164,10 @@ def put_member(
         "tenant.member.put",
         user=user,
         tenant_id=tenant_id,
-        target=email,
-        details={"role": [previous, body.role.value]},
+        target=member.email,
+        details={"role": [previous, body.role.value], "invited": sent is not None},
     )
-    return MemberOut(user_id=member.id, email=member.email, name=member.name, role=TenantRole(body.role))
+    return _member_out(member, body.role.value, sent)
 
 
 @router.delete("/{tenant_id}/members/{user_id}", status_code=204)
@@ -147,7 +175,7 @@ def delete_member(
     tenant_id: str,
     user_id: str,
     request: Request,
-    _: SessionData = Depends(require_admin),
+    _: SessionData = Depends(tenant_access(Perm.members_manage)),
     user: SessionData = Depends(require_recent_mfa),
     db: Session = Depends(scoped_db),
 ):
@@ -156,5 +184,15 @@ def delete_member(
     )
     if link is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "member_not_found")
-    audit.record(db, request, "tenant.member.delete", user=user, tenant_id=tenant_id, target=user_id)
+    if user_id == user.user_id and not user.is_admin:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "cannot_remove_yourself")
+    target = db.get(AppUser, user_id)
+    audit.record(
+        db,
+        request,
+        "tenant.member.delete",
+        user=user,
+        tenant_id=tenant_id,
+        target=target.email if target else user_id,
+    )
     db.delete(link)

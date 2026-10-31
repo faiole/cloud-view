@@ -10,9 +10,10 @@ rede, inventário, ações rápidas, alertas, atualizações e recomendações.
 | Princípio | Como é atendido |
 |---|---|
 | **Painel rápido** | O front **nunca** consulta as nuvens em tempo real. Coletores assíncronos gravam *snapshots* normalizados no Postgres e o painel lê do banco/cache (respostas < 200 ms). Eventos (mudança de estado, Health) chegam por *push*. |
-| **Segurança das credenciais** | Preferência por **credenciais sem chave** (AssumeRole com ExternalId, federação OIDC). Quando houver segredo (OCI API key, Azure secret), ele fica no **AWS Secrets Manager criptografado com KMS CMK**; o banco guarda só a referência (ARN). Segredos são *write-only* na UI. |
+| **Segurança das credenciais** | Preferência por **credenciais sem chave** (AssumeRole com ExternalId, federação OIDC). Quando houver segredo, ele vai para o **cofre próprio** (RSA-4096 + AES-256-GCM): a API só tem a chave pública (grava, não lê) e só os workers têm a privada. Segredos são *write-only* na UI. |
 | **Menor privilégio** | Dois papéis por conta: `CloudViewReadOnly` (coleta) e `CloudViewOperator` (ações, restrito por tag). |
-| **Multi-tenant** | Toda entidade tem `tenant_id` (cliente) + Row-Level Security no Postgres. |
+| **Multi-tenant** | Cada linha de custo e cada documento tem `tenant_id`, calculado pelas regras de atribuição de contas; Row-Level Security no Postgres. Uma Organization pode ter contas de várias empresas. |
+| **Infra enxuta e portátil** | Um `docker compose` roda a stack inteira, igual na máquina local e em uma VM de AWS, Azure ou OCI. Nada depende de serviço gerenciado de uma nuvem. |
 | **Extensível** | Cada provedor é um *plugin* com a mesma interface (`inventory`, `costs`, `health`, `recommendations`, `actions`). |
 
 ---
@@ -21,99 +22,88 @@ rede, inventário, ações rápidas, alertas, atualizações e recomendações.
 
 ```mermaid
 flowchart LR
-    U[Usuário<br/>browser] -->|HTTPS| CF[CloudFront + WAF]
-    CF --> WEB[Frontend<br/>Next.js]
-    CF --> ALB[ALB]
-    ALB --> API[API<br/>FastAPI]
-    API <--> KC[Keycloak<br/>login + MFA]
-    API <--> PG[(PostgreSQL)]
-    API <--> RD[(Redis<br/>cache/sessões)]
-    API -->|ações| Q[SQS<br/>filas]
-    SCH[Scheduler] --> Q
-    Q --> WK[Workers<br/>coletores + executores]
+    U[Usuário<br/>browser] -->|HTTPS| CD[Caddy<br/>TLS automático]
+    CD -->|/| WEB[Painel<br/>Next.js]
+    CD -->|/api| API[API<br/>FastAPI]
+    CD -->|/auth| KC[Keycloak<br/>login + MFA]
+    API <--> KC
+    API <--> PG[(PostgreSQL<br/>RLS por empresa)]
+    API <--> RD[(Redis<br/>sessões)]
+    API --> DOC[(Documentos<br/>volume cifrado ou S3)]
+    API -->|só chave pública| VAULT[Cofre de credenciais<br/>no Postgres]
+    WK[Workers<br/>Fase 1] -->|chave privada| VAULT
     WK --> PG
-    WK --> SM[Secrets Manager<br/>+ KMS]
-    WK -->|STS AssumeRole| AWS[(Contas AWS /<br/>Organizations)]
-    WK -->|Service Principal /<br/>Federação| AZ[(Azure Tenants /<br/>Subscriptions)]
-    WK -->|API Signing Key| OCI[(OCI Tenancies)]
-    AWS -.EventBridge.-> EVT[Ingestor de eventos]
-    AZ -.Event Grid.-> EVT
-    OCI -.Events/Notifications.-> EVT
-    EVT --> Q
-    WK --> NT[Notificador<br/>e-mail/Teams/Slack/Webhook]
+    WK -->|AssumeRole| AWS[(AWS / Organizations)]
+    WK -->|Federação / SP| AZ[(Azure)]
+    WK -->|API key| OCI[(OCI)]
+    F[Export FOCUS<br/>AWS · Azure · OCI] -->|importação| API
 ```
+
+Tudo roda em containers numa única máquina (ou mais, se precisar crescer). Só o Caddy publica
+portas (80/443).
 
 ---
 
-## 3. Stack recomendada
+## 3. Stack
 
 | Camada | Tecnologia | Motivo |
 |---|---|---|
-| Frontend | **Next.js (React) + TypeScript**, Tailwind + shadcn/ui, TanStack Query/Table, ECharts | Tabelas grandes, gráficos rápidos, SSR para primeira carga |
-| API | **Python 3.12 + FastAPI**, SQLAlchemy 2, Pydantic | SDKs oficiais mais completos das 3 nuvens são em Python (boto3, azure-sdk, oci) |
-| Workers | Python (mesmo código-base), **SQS** como fila, Celery ou Dramatiq | Paralelismo por conta/região, retries, DLQ |
-| Identidade | **Keycloak** (OIDC) — senha + **TOTP** e/ou **WebAuthn/Passkey** obrigatórios | MFA, política de senha, bloqueio por força bruta, auditoria prontos |
-| Banco | **PostgreSQL 16** (RDS Multi-AZ) com tabelas particionadas por mês (**pg_partman**) para métricas e custo diário | Relacional + séries temporais num só lugar (o RDS não oferece TimescaleDB) |
-| Cache | **Redis** (ElastiCache) | KPIs do dashboard, rate limit, locks de coleta |
-| Segredos | **AWS Secrets Manager + KMS CMK** (alternativa: HashiCorp Vault) | Rotação, auditoria no CloudTrail, envelope encryption |
-| Hospedagem | **AWS ECS Fargate**, ALB, CloudFront, WAF | Sem gerenciar servidores; conta “hub” isolada |
-| IaC / CI | **Terraform** + GitHub Actions com OIDC (sem chaves no CI) | Reprodutível |
-| Observabilidade | OpenTelemetry → CloudWatch / Grafana | Monitorar os próprios coletores |
+| Entrada | **Caddy** | HTTPS automático (Let's Encrypt), um único domínio para painel, API e login |
+| Frontend | **Next.js (React) + TypeScript** | Tabelas e gráficos rápidos |
+| API | **Python 3.12 + FastAPI**, SQLAlchemy 2, Pydantic | SDKs oficiais mais completos das 3 nuvens são em Python |
+| Workers (Fase 1) | Python, fila no **Redis** (ou Postgres) | Sem serviço de fila de nuvem; paralelismo por conta/região |
+| Identidade | **Keycloak** (OIDC) — senha + **TOTP** obrigatório | MFA, política de senha, bloqueio por força bruta, convites por e-mail |
+| Banco | **PostgreSQL 16** (container, ou gerenciado se preferir) | Relacional + custos diários; particionamento por mês quando crescer |
+| Cache / sessões | **Redis** | Sessões server-side, cache de KPIs |
+| Custos | Formato **FOCUS** (FinOps) | Mesmo layout exportado por AWS, Azure e OCI |
+| Segredos | **Cofre próprio** (RSA-4096 + AES-256-GCM) | Portável; API grava sem conseguir ler |
+| Documentos | Volume Docker cifrado (AES-256-GCM) ou qualquer **S3 compatível** | AWS S3, MinIO, OCI Object Storage, Cloudflare R2 |
+| Backup | `pg_dump` diário (14 dias) em volume | Copiar o volume para fora da máquina |
+| CI | GitHub Actions | Testes, build e subida da stack completa |
+
+Alternativa opcional: `infra/optional/aws-ecs` (Terraform com ECS Fargate, RDS, ElastiCache, ALB/WAF).
 
 ---
 
 ## 4. Modelo de dados (multi-cliente)
 
 ```
-Cliente (tenant)
- └── Conexão (provider + tipo)
-      ├── aws_account          → 1 conta
-      ├── aws_organization     → descobre N contas automaticamente
-      ├── azure_tenant         → descobre N subscriptions
-      └── oci_tenancy          → descobre N compartments
-           └── Conta/Subscription/Compartment (cloud_account)
-                └── Recurso (resource) — instâncias, discos, IPs, LBs, VNets…
-                     ├── métricas (resource_metric, série temporal)
-                     ├── eventos de saúde (health_event)
-                     └── recomendações (recommendation)
+Empresa (tenant)  ←──  papéis por usuário: tenant_admin | operator | finance | viewer
+   ▲
+   │ regras de atribuição (conta inteira, ou só linhas com uma tag; com período de validade)
+   │
+Conta de nuvem (conta AWS / subscription Azure / compartment OCI)
+   │ pertence hoje a →  Conexão (Organization / conta pagadora / tenant Azure / tenancy OCI)
+   │
+   └── linhas de custo diárias (FOCUS) ── tenant_id calculado pela atribuição
+Documentos (invoice, NF-e, boleto, demonstrativo) ── sempre de UMA empresa
 ```
+
+Ponto central: **a conexão (Organization/pagadora) não pertence a uma empresa**. Uma mesma
+Organization "AB" pode ter contas das empresas A e B; e a empresa A pode ter contas em AB, AC e AD.
+Quem vê o quê é decidido conta a conta.
 
 Tabelas principais:
 
 ```sql
-tenant(id, name, slug, created_at)
-connection(id, tenant_id, provider, kind, display_name,
-           auth_method,           -- assume_role | federated | service_principal | api_key
-           role_arn, external_id, -- AWS
-           azure_tenant_id, client_id,
-           oci_tenancy_ocid, oci_user_ocid, oci_fingerprint,
-           secret_ref,            -- ARN no Secrets Manager (NUNCA o segredo)
-           status, last_sync_at)
-cloud_account(id, tenant_id, connection_id, provider, native_id, name, tags jsonb)
-resource(id, tenant_id, cloud_account_id, provider, region, type, native_id, name,
-         state, instance_model, vcpu, memory_gb, os,
-         private_ips, public_ips, vpc_id, subnet_id, security_groups jsonb,
-         tags jsonb, raw jsonb, collected_at)
-cost_daily(tenant_id, cloud_account_id, day, service, region, amount, currency, -- particionada por mês
-           amortized_amount, usage_type)
-cost_forecast(tenant_id, cloud_account_id, month, amount)
-invoice(tenant_id, cloud_account_id, period, amount, status, due_date)
-resource_metric(resource_id, ts, metric, value)          -- particionada (CPU, mem, rede)
-health_event(id, tenant_id, provider, scope, service, region, status, start, end, details)
-recommendation(id, tenant_id, resource_id, source, category, -- cost|performance|security|reliability
-               title, description, estimated_monthly_saving, effort, status)
-patch_status(resource_id, missing_critical, missing_security, last_scan)
-alert_rule(id, tenant_id, type, condition jsonb, channels jsonb, enabled)
-alert(id, tenant_id, rule_id, severity, title, resource_id, status, opened_at, closed_at)
-action_request(id, tenant_id, user_id, resource_id, action, status, reason,
-               requested_at, executed_at, result jsonb)
-audit_log(id, ts, user_id, tenant_id, ip, action, target, payload_hash)  -- append-only
-app_user(id, keycloak_sub, email)   user_tenant_role(user_id, tenant_id, role)
+tenant(id, name, slug, aws_external_id)
+app_user(id, keycloak_sub, email, name, disabled, invited_at, last_login_at)
+user_tenant_role(user_id, tenant_id, role)            -- role ∈ tenant_admin|operator|finance|viewer
+connection(id, provider, kind, native_id, name, secret_ref)
+cloud_account(id, provider, native_id, name, connection_id)
+account_assignment(id, cloud_account_id, tenant_id, tag_key, tag_value, valid_from, valid_to)
+cost_line(id, tenant_id, cloud_account_id, provider, billing_account_id, charge_date,
+          service, region, charge_category, currency, billed_cost, effective_cost, tags jsonb)
+import_batch(id, filename, period_start, period_end, source_rows, stored_rows, replaced_rows)
+document(id, tenant_id, kind, billing_period, number, amount, currency, due_date,
+         filename, content_type, sha256, storage_key)
+cloud_secret(id, purpose, key_id, sealed)             -- credencial cifrada pelo cofre
+audit_log(...)                                         -- append-only
 ```
 
-Isolamento: `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` com política
-`tenant_id = current_setting('app.tenant_ids')`, definida pela API a cada request
-a partir dos tenants do usuário autenticado.
+Isolamento: RLS em `tenant`, `cost_line` e `document` com
+`tenant_id = ANY(current_setting('app.tenant_ids'))`, definido pela API a cada request.
+Detalhes do modelo de acesso: [ACESSOS-E-FATURAMENTO.md](ACESSOS-E-FATURAMENTO.md).
 
 ---
 
@@ -144,8 +134,12 @@ a partir dos tenants do usuário autenticado.
 
 ### 6.1 AWS (sem chave de acesso!)
 
-A plataforma roda numa **conta hub** com uma IAM Role da task ECS. Em cada conta cliente
-é criada (via CloudFormation de 1 clique ou **StackSet** na Organization) a role:
+Os workers usam **uma única identidade "hub"** para assumir roles nas contas dos clientes:
+- se a VM roda na AWS (EC2), a *instance profile* da máquina — nenhuma chave guardada;
+- em qualquer outro lugar (Azure, OCI, local), um usuário IAM `cloudview-hub` cuja única permissão
+  é `sts:AssumeRole` em `CloudViewReadOnly`/`CloudViewOperator`; a chave dele fica no cofre.
+
+Em cada conta cliente é criada (via CloudFormation de 1 clique ou **StackSet** na Organization) a role:
 
 ```yaml
 # cloudview-readonly.yaml (resumo)
@@ -189,24 +183,29 @@ Resources:
   restart, se quiser ações) no Management Group/Subscriptions.
 - Autenticação preferencial: **Workload Identity Federation** (credencial federada confiando
   no token OIDC da plataforma) → sem segredo. Alternativa: **certificado** guardado no
-  Secrets Manager. *Client secret* só em último caso, com rotação.
+  cofre. *Client secret* só em último caso, com rotação.
 
 ### 6.3 OCI
 
 - Usuário técnico (ou grupo) com policies `inspect/read all-resources`, `read usage-reports`,
   e `use instance-family` (para ações) restrito a compartments.
 - **API Signing Key**: o par de chaves é **gerado pela própria plataforma**; só a chave pública
-  é mostrada para o cliente colar no console OCI. A privada vai direto para o Secrets Manager
+  é mostrada para o cliente colar no console OCI. A privada vai direto para o cofre
   e nunca trafega/aparece de novo.
 
 ### 6.4 Regras gerais de segredos
 
-- Secrets Manager com **KMS CMK dedicada** e *key policy* que só permite `Decrypt` à role dos
-  workers (a API web **não** consegue ler segredos).
-- Banco guarda apenas `secret_ref`. Campos de segredo são *write-only* na UI/API.
+- **Cofre próprio, portátil** (`apps/api/app/vault.py`): cada segredo é cifrado com uma chave
+  AES-256-GCM aleatória, que por sua vez é cifrada com a chave pública RSA-4096 do cofre.
+  O texto cifrado fica no Postgres (`cloud_secret`), amarrado ao próprio id (não pode ser copiado
+  para outra conexão).
+- A **API só monta a chave pública**: grava credenciais novas, mas não lê as existentes. Só os
+  workers montam a chave privada (volume Docker separado).
+- Rotação: gera-se um novo par; os workers aceitam várias chaves privadas, então segredos antigos
+  continuam legíveis até serem regravados.
+- Campos de segredo são *write-only* na UI/API; o banco da aplicação não guarda nada em claro.
 - Credenciais temporárias (STS/Azure tokens) ficam só em memória, com TTL ≤ 1 h.
-- Rotação agendada, CloudTrail + alerta para qualquer `GetSecretValue` fora dos workers.
-- Banco criptografado (RDS + KMS), TLS em tudo, backups criptografados.
+- Documentos (invoices/NF) cifrados no disco com AES-256-GCM, ou em S3 compatível.
 
 ---
 
@@ -252,7 +251,7 @@ sequenceDiagram
     participant U as Usuário
     participant API
     participant KC as Keycloak
-    participant Q as SQS (actions)
+    participant Q as Fila (actions)
     participant EX as Executor
     participant C as Nuvem
     U->>API: POST /actions {resource, "reboot", motivo}
@@ -311,28 +310,26 @@ Busca global (Ctrl+K) por nome, IP, ID de instância.
 
 ---
 
-## 11. Infraestrutura da plataforma (conta AWS hub)
+## 11. Infraestrutura da plataforma
+
+Uma VM com Docker, em qualquer nuvem ou no seu datacenter:
 
 ```
-Route 53 → ALB (+ WAF: rate limit, IP allowlist, managed rules)   [CloudFront opcional na frente]
-   └── ALB (subnets públicas) → ECS Fargate (subnets privadas)
-          ├── web/BFF (2+ tasks)
-          ├── api (2+ tasks, autoscaling)
-          ├── workers-collect (autoscaling por profundidade de fila)
-          ├── workers-actions (isolado, única role que assume CloudViewOperator)
-          ├── scheduler (1 task)
-          └── keycloak (2 tasks, banco próprio)
-   RDS PostgreSQL Multi-AZ · ElastiCache Redis · SQS (+DLQ) · Secrets Manager · KMS
-   EventBridge (bus central recebendo eventos das contas clientes)
-   SES · CloudWatch/Grafana · AWS Backup · GuardDuty/Security Hub na própria conta
+Internet ──► Caddy :80/:443 (TLS automático)
+               ├── /        → web (Next.js)
+               ├── /api/*   → api (FastAPI)
+               └── /auth/*  → keycloak     (console /auth/admin só de redes liberadas)
+Rede interna Docker: postgres · redis · migrate · vault-keys · backup · (workers na Fase 1)
+Volumes: pgdata · documents (cifrado) · vault-private · vault-public · backups · caddy-data
 ```
 
-Separação de privilégios por *task role*: a API não lê segredos; só `workers-actions`
-pode assumir roles de escrita.
+| Porte | Sugestão de VM | Custo aproximado |
+|---|---|---|
+| Até ~100 contas | 2 vCPU / 4–8 GB (AWS t4g.large, Azure B2s, OCI Ampere A1) | US$ 0–60/mês (OCI A1 cabe no *Always Free*) |
+| Até ~500 contas | 4 vCPU / 16 GB | US$ 60–150/mês |
 
-**Custo estimado** (porte inicial, até ~100 contas): ~US$ 250–450/mês
-(Fargate ~120, RDS Multi-AZ db.t4g.medium ~130, Redis ~30, ALB/CloudFront/WAF ~50,
-Secrets/KMS/SQS ~20) + chamadas de Cost Explorer (~US$ 0,01 cada).
+Crescendo: Postgres e Redis podem sair para serviços gerenciados só trocando as URLs no `.env`,
+e os documentos para S3 compatível. Passo a passo em [DEPLOY.md](DEPLOY.md).
 
 ---
 
@@ -340,36 +337,19 @@ Secrets/KMS/SQS ~20) + chamadas de Cost Explorer (~US$ 0,01 cada).
 
 ```
 cloud-view/
+├── docker-compose.yml       # stack completa (local e servidor)
+├── scripts/setup.sh         # gera .env com segredos aleatórios
 ├── apps/
 │   ├── web/                 # Next.js
-│   └── api/                 # FastAPI (rotas, auth, RBAC, BFF)
-├── workers/
-│   ├── core/                # fila, scheduler, locks, normalização
-│   ├── providers/
-│   │   ├── aws/             # inventory.py costs.py health.py recommendations.py actions.py
-│   │   ├── azure/
-│   │   └── oci/
-│   ├── rules/               # regras próprias de recomendação e alertas
-│   └── notifiers/           # email, teams, slack, webhook
-├── db/migrations/           # Alembic
-├── infra/terraform/         # plataforma (hub)
-├── onboarding/
-│   ├── aws/cloudformation/  # roles ReadOnly/Operator + StackSet p/ Organization
-│   ├── azure/               # script az cli / Bicep de RBAC
-│   └── oci/                 # policies IAM
+│   └── api/                 # FastAPI: auth, RBAC, custos, relatórios, documentos, cofre
+├── infra/
+│   ├── caddy/Caddyfile
+│   ├── keycloak/            # realm (MFA obrigatório) e imagem
+│   ├── local/               # init do Postgres
+│   └── optional/aws-ecs/    # Terraform opcional (ECS/RDS/ALB)
+├── onboarding/aws/          # CloudFormation das roles (conta ou Organization)
+├── samples/                 # arquivo FOCUS de exemplo
 └── docs/
-```
-
-Interface comum de provedor:
-
-```python
-class CloudProvider(Protocol):
-    def discover_accounts(self, conn: Connection) -> list[CloudAccount]: ...
-    def collect_inventory(self, acc: CloudAccount, region: str) -> Iterable[Resource]: ...
-    def collect_costs(self, acc: CloudAccount, start: date, end: date) -> Iterable[CostRow]: ...
-    def collect_health(self, acc: CloudAccount) -> Iterable[HealthEvent]: ...
-    def collect_recommendations(self, acc: CloudAccount) -> Iterable[Recommendation]: ...
-    def execute_action(self, res: Resource, action: ActionType) -> ActionResult: ...
 ```
 
 ---
@@ -378,12 +358,13 @@ class CloudProvider(Protocol):
 
 | Fase | Entrega | Prazo estimado* |
 |---|---|---|
-| **0 – Fundação** | Terraform da conta hub, Keycloak com MFA obrigatório, RBAC, tenants, auditoria | 2–3 semanas |
-| **1 – MVP AWS** | Onboarding por CloudFormation (conta e Organization), inventário + rede, custos diários/forecast, saúde EC2 + AWS Health, dashboard geral, reiniciar/ligar/desligar | 4–6 semanas |
-| **2 – Otimização e alertas** | Cost Optimization Hub/Compute Optimizer + regras próprias, orçamentos, anomalias, notificações Teams/Slack/e-mail, patches SSM | 3–4 semanas |
-| **3 – Azure** | Resource Graph, Cost Management, Advisor, Resource Health, ações em VM | 3–4 semanas |
-| **4 – OCI** | Search, Usage API, Cloud Advisor, Monitoring, ações em instância | 3–4 semanas |
-| **5 – Evolução** | Portal do cliente, topologia de rede, relatórios PDF mensais, agendamento liga/desliga, showback por tag | contínuo |
+| **0 – Fundação** ✅ | Keycloak com MFA obrigatório, RBAC, empresas, auditoria imutável, RLS | 2–3 semanas |
+| **0.5 – Acessos e faturamento** ✅ | Administração de usuários (convite, desativar, reset de MFA), papéis por empresa, atribuição de contas (inclusive dividida por tag), importação FOCUS das 3 nuvens, relatórios por conta/serviço/tag com CSV, invoices e notas fiscais, cofre portátil, stack Docker única | 2–3 semanas |
+| **1 – Coleta AWS** | Conexões AWS / Organizations, coleta automática de custos (Data Exports) e invoices, inventário + rede, saúde, ações rápidas | 4–6 semanas |
+| **2 – Otimização e alertas** | Cost Optimization Hub/Compute Optimizer + regras próprias, orçamentos, anomalias, notificações Teams/Slack/e-mail, patches | 3–4 semanas |
+| **3 – Azure** | Coleta automática (Cost Management, Resource Graph), Advisor, Resource Health, ações em VM | 3–4 semanas |
+| **4 – OCI** | Coleta automática (FOCUS reports, Search), Cloud Advisor, Monitoring, ações em instância | 3–4 semanas |
+| **5 – Evolução** | Topologia de rede, relatório mensal em PDF, agendamento liga/desliga | contínuo |
 
 \* para 1–2 desenvolvedores full-stack.
 

@@ -139,6 +139,7 @@ resource "aws_ecs_task_definition" "migrate" {
     environment = [
       { name = "DB_HOST", value = aws_db_instance.main.address },
       { name = "DB_NAME", value = "cloudview" },
+      { name = "DB_MANAGE_ROLES", value = "true" },
     ]
     secrets = [
       { name = "DB_OWNER_USER", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:username::" },

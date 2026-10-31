@@ -10,13 +10,11 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.db import apply_tenant_scope, get_db
 from app.core.redis import get_redis
-from app.models import TenantRole, UserTenantRole
+from app.models import AppUser, UserTenantRole
+from app.permissions import Perm, perms_for
 from app.security.session import CSRF_HEADER, SESSION_COOKIE, SessionData, SessionStore
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-
-# Hierarquia de papéis por cliente. `client` é o portal do próprio cliente (somente leitura).
-ROLE_RANK = {TenantRole.client.value: 1, TenantRole.viewer.value: 1, TenantRole.operator.value: 2}
 
 
 def get_store() -> SessionStore:
@@ -26,15 +24,19 @@ def get_store() -> SessionStore:
 def current_session(
     request: Request, store: SessionStore = Depends(get_store), db: Session = Depends(get_db)
 ) -> SessionData:
-    data = store.get(request.cookies.get(SESSION_COOKIE))
+    sid = request.cookies.get(SESSION_COOKIE)
+    data = store.get(sid)
     if data is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_authenticated")
-    # Vínculos com clientes são relidos a cada request: remover um acesso vale na hora,
-    # sem esperar a sessão expirar.
+    # Usuário desativado perde o acesso imediatamente, mesmo com sessão ativa
+    if db.scalar(select(AppUser.disabled).where(AppUser.id == data.user_id)) is not False:
+        store.delete(sid or "")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not_authenticated")
+    # Vínculos com clientes são relidos a cada request: remover um acesso vale na hora.
     rows = db.execute(
         select(UserTenantRole.tenant_id, UserTenantRole.role).where(UserTenantRole.user_id == data.user_id)
     ).all()
-    data.tenants = {t: r.value for t, r in rows}
+    data.tenants = {t: r for t, r in rows}
     # Proteção CSRF (double submit): métodos que alteram estado exigem o header com o token da sessão
     if request.method not in SAFE_METHODS:
         sent = request.headers.get(CSRF_HEADER, "")
@@ -65,14 +67,22 @@ def require_recent_mfa(user: SessionData = Depends(current_session)) -> SessionD
     return user
 
 
-def tenant_access(min_role: TenantRole = TenantRole.viewer) -> Callable[..., SessionData]:
+def has_perm(user: SessionData, tenant_id: str, perm: Perm) -> bool:
+    return user.is_admin or perm in perms_for(user.tenants.get(tenant_id))
+
+
+def tenant_access(perm: Perm | None = None) -> Callable[..., SessionData]:
+    """Exige vínculo com o cliente do path e, opcionalmente, uma permissão do papel."""
+
     def dep(tenant_id: str, user: SessionData = Depends(current_session)) -> SessionData:
         if user.is_admin:
             return user
         role = user.tenants.get(tenant_id)
-        if role is None or ROLE_RANK.get(role, 0) < ROLE_RANK[min_role.value]:
+        if role is None:
             # 404 em vez de 403 para não revelar a existência de clientes de terceiros
             raise HTTPException(status.HTTP_404_NOT_FOUND, "tenant_not_found")
+        if perm is not None and perm not in perms_for(role):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, f"missing_permission:{perm.value}")
         return user
 
     return dep

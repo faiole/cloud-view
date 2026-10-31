@@ -1,0 +1,49 @@
+# Porta de entrada única: TLS automático (Let's Encrypt) quando CV_SITE_ADDRESS é um domínio.
+# Local: CV_SITE_ADDRESS=http://  (sem TLS)
+{
+	admin off
+}
+
+{$CV_SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		-Server
+	}
+
+	# Console administrativo do Keycloak só a partir das redes liberadas
+	@kc_admin {
+		path /auth/admin* /auth/realms/master*
+		not remote_ip {$CV_ADMIN_CIDRS:private_ranges}
+	}
+	respond @kc_admin "forbidden" 403
+
+	# Health/metrics do Keycloak nunca ficam públicos
+	respond /auth/health* 404
+	respond /auth/metrics* 404
+
+	request_body /api/admin/imports/* {
+		max_size 500MB
+	}
+	request_body {
+		max_size 25MB
+	}
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+	handle /auth/* {
+		reverse_proxy keycloak:8080
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

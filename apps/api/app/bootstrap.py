@@ -1,8 +1,8 @@
 """Prepara o banco em um ambiente novo e aplica as migrações.
 
 Executado pela task ECS `migrate` (e pode ser usado localmente). Idempotente:
-1. cria/atualiza os usuários `cloudview_app` (DML + RLS) e `keycloak`;
-2. cria o banco do Keycloak;
+1. (DB_MANAGE_ROLES=true) cria/atualiza os usuários `cloudview_app` e `keycloak` e o banco do Keycloak;
+2. garante o acesso do usuário da aplicação ao schema;
 3. roda `alembic upgrade head` como dono do schema.
 """
 
@@ -39,10 +39,14 @@ def main() -> None:
     sslmode = os.environ.get("DB_SSLMODE", "require")
     conninfo = dict(host=host, port=port, user=owner, password=owner_pw, sslmode=sslmode)
 
+    # Em Docker os usuários já são criados pelo init do Postgres; em bancos gerenciados (RDS,
+    # Azure Database, OCI) o usuário master cria/atualiza os demais: DB_MANAGE_ROLES=true.
+    manage_roles = os.environ.get("DB_MANAGE_ROLES", "false").lower() == "true"
     with psycopg.connect(dbname=db, autocommit=True, **conninfo) as conn, conn.cursor() as cur:
-        _ensure_role(cur, "cloudview_app", os.environ["APP_DB_PASSWORD"])
+        if manage_roles:
+            _ensure_role(cur, "cloudview_app", os.environ["APP_DB_PASSWORD"])
         cur.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO cloudview_app"))
-        if kc_pw := os.environ.get("KEYCLOAK_DB_PASSWORD"):
+        if manage_roles and (kc_pw := os.environ.get("KEYCLOAK_DB_PASSWORD")):
             _ensure_role(cur, "keycloak", kc_pw)
             cur.execute("SELECT 1 FROM pg_database WHERE datname = 'keycloak'")
             if not cur.fetchone():

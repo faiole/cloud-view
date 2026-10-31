@@ -34,15 +34,15 @@ export default function Clientes() {
   return (
     <div className="stack">
       <div>
-        <h1>Clientes</h1>
-        <p className="sub">Cada cliente agrupa suas contas AWS, Organizations, Azure e OCI.</p>
+        <h1>Empresas</h1>
+        <p className="sub">Cada empresa vê apenas os custos, relatórios e documentos das próprias contas.</p>
       </div>
 
       {me?.is_admin && (
         <form className="card inline" onSubmit={create}>
           <label>Nome<input id="tenant-name" value={name} onChange={(e) => setName(e.target.value)} required placeholder="Acme Ltda" /></label>
           <label>Identificador<input id="tenant-slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder={slugify(name) || "acme"} /></label>
-          <button type="submit">Adicionar cliente</button>
+          <button type="submit">Adicionar empresa</button>
           {err && <span className="error">{err}</span>}
         </form>
       )}
@@ -57,12 +57,12 @@ export default function Clientes() {
               <tr key={t.id}>
                 <td><Link href={`/clientes/${t.id}`}>{t.name}</Link></td>
                 <td className="mono">{t.slug}</td>
-                <td>{me?.is_admin ? "Administrador" : roleLabel[me?.tenants[t.id] ?? ""]}</td>
+                <td>{me?.is_admin ? "Administrador" : roleLabel[me?.tenants[t.id] ?? "viewer"]}</td>
                 <td>{new Date(t.created_at).toLocaleDateString("pt-BR")}</td>
               </tr>
             ))}
             {items.length === 0 && (
-              <tr><td colSpan={4} className="muted">Nenhum cliente ainda.{me?.is_admin ? " Adicione o primeiro acima." : ""}</td></tr>
+              <tr><td colSpan={4} className="muted">Nenhuma empresa ainda.{me?.is_admin ? " Adicione o primeiro acima." : ""}</td></tr>
             )}
           </tbody>
         </table>

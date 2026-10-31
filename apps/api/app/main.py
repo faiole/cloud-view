@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import get_settings
-from app.routers import audit, auth, health, tenants
+from app.routers import admin_accounts, admin_users, audit, auth, documents, health, reports, tenants
 
 
 class SecurityHeaders(BaseHTTPMiddleware):
@@ -28,7 +28,16 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(SecurityHeaders)
     # Tudo sob /api: CloudFront/ALB roteiam /api/* para este serviço sem reescrever o caminho
-    for r in (health.router, auth.router, tenants.router, audit.router):
+    for r in (
+        health.router,
+        auth.router,
+        tenants.router,
+        reports.router,
+        documents.router,
+        admin_users.router,
+        admin_accounts.router,
+        audit.router,
+    ):
         app.include_router(r, prefix="/api")
     return app
 

@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     # URL pública do painel (onde o browser acessa o front e /api)
-    public_url: str = "http://localhost:3000"
+    public_url: str = "http://localhost:8080"
 
     # OIDC / Keycloak
     oidc_issuer: str = "http://localhost:8080/realms/cloudview"
@@ -23,6 +23,25 @@ class Settings(BaseSettings):
     oidc_client_id: str = "cloudview-bff"
     oidc_client_secret: str = Field(default="change-me", repr=False)
     platform_admin_role: str = "platform-admin"
+
+    # Cliente de serviço do Keycloak usado para administrar usuários (convite, desativar, reset MFA)
+    kc_admin_client_id: str = "cloudview-admin-api"
+    kc_admin_client_secret: str = Field(default="change-me", repr=False)
+
+    # Cofre de credenciais das nuvens (ver app/vault.py). A API recebe só a chave pública.
+    vault_public_key: str | None = "/run/vault-public/vault-public.pem"
+    vault_private_keys: str | None = None  # caminhos separados por vírgula (somente workers)
+
+    # Documentos (invoices / notas fiscais)
+    storage_backend: str = "local"  # local | s3 (qualquer S3 compatível: AWS, MinIO, OCI, R2...)
+    storage_local_dir: str = "/data/documents"
+    # Chave AES-256 (base64) para cifrar os documentos no disco local; vazio = sem cifra própria
+    documents_key: str | None = Field(default=None, repr=False)
+    documents_bucket: str | None = None
+    s3_endpoint_url: str | None = None
+    documents_kms_key_id: str | None = None
+    max_document_bytes: int = 20 * 1024 * 1024
+    max_import_bytes: int = 500 * 1024 * 1024
 
     # Sessão
     session_ttl_seconds: int = 15 * 60  # inatividade

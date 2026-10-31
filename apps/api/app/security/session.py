@@ -45,10 +45,24 @@ class SessionStore:
     def _key(sid: str) -> str:
         return f"cv:session:{sid}"
 
+    @staticmethod
+    def _user_key(user_id: str) -> str:
+        return f"cv:user-sessions:{user_id}"
+
     def create(self, data: SessionData) -> str:
         sid = secrets.token_urlsafe(48)
         self.r.set(self._key(sid), json.dumps(asdict(data)), ex=self.settings.session_ttl_seconds)
+        # Índice por usuário para derrubar todas as sessões (desativar, resetar MFA, revogar admin)
+        self.r.sadd(self._user_key(data.user_id), sid)
+        self.r.expire(self._user_key(data.user_id), self.settings.session_absolute_seconds)
         return sid
+
+    def delete_user_sessions(self, user_id: str) -> int:
+        sids = self.r.smembers(self._user_key(user_id))
+        for sid in sids:
+            self.delete(sid)
+        self.r.delete(self._user_key(user_id))
+        return len(sids)
 
     def get(self, sid: str | None) -> SessionData | None:
         if not sid:
