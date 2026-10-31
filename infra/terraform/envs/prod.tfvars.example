@@ -1,0 +1,8 @@
+env                 = "prod"
+region              = "sa-east-1"
+domain_name         = "painel.suaempresa.com.br"
+acm_certificate_arn = "arn:aws:acm:sa-east-1:111111111111:certificate/xxxxxxxx"
+route53_zone_id     = "Z0000000000000"
+allowed_cidrs       = [] # ex.: ["200.200.200.0/24"] para restringir ao escritório/VPN
+image_tag           = "git-sha"
+alarm_email         = "infra@suaempresa.com.br"

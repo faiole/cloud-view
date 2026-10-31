@@ -1,0 +1,129 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Cloud View - roles de acesso para o painel. CloudViewReadOnly (coleta) e, opcionalmente,
+  CloudViewOperator (ações rápidas só em recursos com a tag cloudview-actions=enabled).
+  Pode ser implantado numa conta isolada ou via StackSet em toda a Organization.
+
+Parameters:
+  CollectorPrincipalArn:
+    Type: String
+    Description: ARN da role worker-collect da plataforma (output worker_collect_role_arn do Terraform)
+  ActionsPrincipalArn:
+    Type: String
+    Description: ARN da role worker-actions da plataforma (output worker_actions_role_arn)
+  ExternalId:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: ExternalId do cliente, mostrado na tela do cliente no painel
+  EnableQuickActions:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+    Description: Cria a role CloudViewOperator para reiniciar/ligar/desligar recursos
+
+Conditions:
+  CreateOperator: !Equals [!Ref EnableQuickActions, "true"]
+
+Resources:
+  CloudViewReadOnly:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: CloudViewReadOnly
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { AWS: !Ref CollectorPrincipalArn }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { sts:ExternalId: !Ref ExternalId }
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/job-function/ViewOnlyAccess
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AWSBillingReadOnlyAccess
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/ComputeOptimizerReadOnlyAccess
+      Policies:
+        - PolicyName: cloudview-extra-read
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - health:Describe*
+                  - ce:Get*
+                  - ce:Describe*
+                  - ce:List*
+                  - cost-optimization-hub:Get*
+                  - cost-optimization-hub:List*
+                  - savingsplans:Describe*
+                  - support:DescribeTrustedAdvisor*
+                  - trustedadvisor:Describe*
+                  - trustedadvisor:List*
+                  - ssm:DescribeInstanceInformation
+                  - ssm:DescribeInstancePatchStates
+                  - ssm:ListComplianceSummaries
+                  - ssm:ListResourceComplianceSummaries
+                  - resource-explorer-2:Search
+                  - resource-explorer-2:ListViews
+                  - organizations:ListAccounts
+                  - organizations:DescribeOrganization
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:ListMetrics
+                  - securityhub:GetFindings
+                  - invoicing:List*
+                  - invoicing:Get*
+                Resource: "*"
+              # Coleta nunca lê dados de aplicação nem segredos
+              - Effect: Deny
+                Action:
+                  - s3:GetObject
+                  - secretsmanager:GetSecretValue
+                  - ssm:GetParameter*
+                  - kms:Decrypt
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource: "*"
+
+  CloudViewOperator:
+    Type: AWS::IAM::Role
+    Condition: CreateOperator
+    Properties:
+      RoleName: CloudViewOperator
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { AWS: !Ref ActionsPrincipalArn }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { sts:ExternalId: !Ref ExternalId }
+      Policies:
+        - PolicyName: cloudview-quick-actions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:RebootInstances
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                  - rds:RebootDBInstance
+                  - rds:StartDBInstance
+                  - rds:StopDBInstance
+                  - ecs:UpdateService
+                Resource: "*"
+                Condition:
+                  StringEquals: { aws:ResourceTag/cloudview-actions: enabled }
+              - Effect: Allow
+                Action: ec2:CreateSnapshot
+                Resource: "*"
+
+Outputs:
+  ReadOnlyRoleArn:
+    Value: !GetAtt CloudViewReadOnly.Arn
+  OperatorRoleArn:
+    Condition: CreateOperator
+    Value: !GetAtt CloudViewOperator.Arn

@@ -26,7 +26,7 @@ flowchart LR
     CF --> ALB[ALB]
     ALB --> API[API<br/>FastAPI]
     API <--> KC[Keycloak<br/>login + MFA]
-    API <--> PG[(PostgreSQL<br/>+ TimescaleDB)]
+    API <--> PG[(PostgreSQL)]
     API <--> RD[(Redis<br/>cache/sessões)]
     API -->|ações| Q[SQS<br/>filas]
     SCH[Scheduler] --> Q
@@ -53,7 +53,7 @@ flowchart LR
 | API | **Python 3.12 + FastAPI**, SQLAlchemy 2, Pydantic | SDKs oficiais mais completos das 3 nuvens são em Python (boto3, azure-sdk, oci) |
 | Workers | Python (mesmo código-base), **SQS** como fila, Celery ou Dramatiq | Paralelismo por conta/região, retries, DLQ |
 | Identidade | **Keycloak** (OIDC) — senha + **TOTP** e/ou **WebAuthn/Passkey** obrigatórios | MFA, política de senha, bloqueio por força bruta, auditoria prontos |
-| Banco | **PostgreSQL 16** (RDS Multi-AZ) + extensão **TimescaleDB** (ou tabelas particionadas) para métricas e custo diário | Relacional + séries temporais num só lugar |
+| Banco | **PostgreSQL 16** (RDS Multi-AZ) com tabelas particionadas por mês (**pg_partman**) para métricas e custo diário | Relacional + séries temporais num só lugar (o RDS não oferece TimescaleDB) |
 | Cache | **Redis** (ElastiCache) | KPIs do dashboard, rate limit, locks de coleta |
 | Segredos | **AWS Secrets Manager + KMS CMK** (alternativa: HashiCorp Vault) | Rotação, auditoria no CloudTrail, envelope encryption |
 | Hospedagem | **AWS ECS Fargate**, ALB, CloudFront, WAF | Sem gerenciar servidores; conta “hub” isolada |
@@ -94,11 +94,11 @@ resource(id, tenant_id, cloud_account_id, provider, region, type, native_id, nam
          state, instance_model, vcpu, memory_gb, os,
          private_ips, public_ips, vpc_id, subnet_id, security_groups jsonb,
          tags jsonb, raw jsonb, collected_at)
-cost_daily(tenant_id, cloud_account_id, day, service, region, amount, currency, -- hypertable
+cost_daily(tenant_id, cloud_account_id, day, service, region, amount, currency, -- particionada por mês
            amortized_amount, usage_type)
 cost_forecast(tenant_id, cloud_account_id, month, amount)
 invoice(tenant_id, cloud_account_id, period, amount, status, due_date)
-resource_metric(resource_id, ts, metric, value)          -- hypertable (CPU, mem, rede)
+resource_metric(resource_id, ts, metric, value)          -- particionada (CPU, mem, rede)
 health_event(id, tenant_id, provider, scope, service, region, status, start, end, details)
 recommendation(id, tenant_id, resource_id, source, category, -- cost|performance|security|reliability
                title, description, estimated_monthly_saving, effort, status)
@@ -239,7 +239,7 @@ Cada recomendação traz **economia estimada/mês**, esforço e botão “aplica
 - *Lock* em Redis para não coletar a mesma conta em duplicidade.
 - Backoff exponencial para *throttling*; DLQ + alerta de “conexão quebrada”.
 - Diferencial: grava só o que mudou (hash do `raw`), mantém histórico.
-- Agregados pré-calculados (*materialized views / continuous aggregates*) para os KPIs.
+- Agregados pré-calculados (*materialized views* atualizadas pelo pg_cron) para os KPIs.
 
 ---
 
@@ -314,8 +314,7 @@ Busca global (Ctrl+K) por nome, IP, ID de instância.
 ## 11. Infraestrutura da plataforma (conta AWS hub)
 
 ```
-Route 53 → CloudFront (+ WAF: rate limit, geo/IP allowlist, managed rules)
-   ├── S3/Next.js estático
+Route 53 → ALB (+ WAF: rate limit, IP allowlist, managed rules)   [CloudFront opcional na frente]
    └── ALB (subnets públicas) → ECS Fargate (subnets privadas)
           ├── web/BFF (2+ tasks)
           ├── api (2+ tasks, autoscaling)

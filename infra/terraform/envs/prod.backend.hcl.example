@@ -1,0 +1,5 @@
+bucket       = "suaempresa-terraform-state"
+key          = "cloud-view/prod.tfstate"
+region       = "sa-east-1"
+encrypt      = true
+use_lockfile = true
