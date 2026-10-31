@@ -155,3 +155,36 @@ label.grow { flex: 1 1 280px; }
 
 /* Fase 4 */
 details.card summary { cursor: pointer; }
+
+/* Fase 5: topologia */
+.topo-wrap { overflow-x: auto; }
+.topo { display: block; max-width: none; }
+.topo text { font-family: inherit; }
+.topo-internet { fill: var(--surface); stroke: var(--muted); stroke-width: 1.2; }
+.topo-internet-label { fill: var(--ink); font-size: 13px; font-weight: 600; }
+.topo-net { fill: var(--bg); stroke: var(--line); stroke-width: 1.2; }
+.topo-net-title { fill: var(--ink); font-size: 14px; font-weight: 600; }
+.topo-muted { fill: var(--muted); font-size: 11px; }
+.topo-subnet { fill: var(--surface); stroke: var(--line); stroke-dasharray: 4 3; }
+.topo-subnet.public { stroke: var(--accent); stroke-dasharray: none; }
+.topo-subnet-title { fill: var(--ink); font-size: 12px; font-weight: 500; }
+.topo-chip { fill: var(--surface); stroke: var(--line); cursor: pointer; }
+.topo-chip.exposed { stroke: var(--bad); stroke-width: 1.6; }
+.topo-chip.selected { stroke: var(--accent); stroke-width: 2; }
+.topo-chip-g:focus-visible .topo-chip { stroke: var(--accent); stroke-width: 2; }
+.topo-chip-g { outline: none; }
+.topo-chip-title { fill: var(--ink); font-size: 12px; font-weight: 500; pointer-events: none; }
+.topo-dot { fill: var(--muted); }
+.topo-dot.on { fill: var(--ok); }
+.topo-warn { fill: var(--bad); font-size: 10.5px; font-weight: 600; }
+.topo-edge { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; }
+.topo-edge.exposed { stroke: var(--bad); stroke-width: 1.8; stroke-dasharray: none; }
+.legend { display: inline-flex; gap: 10px; align-items: center; color: var(--muted); font-size: 12.5px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 22px; height: 0; border-top: 2px solid var(--bad); vertical-align: middle; }
+.legend i.lg-public { border-top: 2px dashed var(--muted); }
+.legend i.lg-pubnet { border-top: 2px solid var(--accent); }
+.topo-badge { fill: var(--surface); stroke: var(--muted); }
+.topo-badge.exposed { stroke: var(--bad); }
+.topo-badge-text { fill: var(--muted); font-size: 10px; }
+.topo-badge-text.exposed { fill: var(--bad); font-weight: 600; }
+.topo-halo { paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }

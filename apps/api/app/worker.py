@@ -24,6 +24,7 @@ from app.oci.client import OciHub
 from app.services import jobs, notifications, scheduler
 from app.services.allocation import reallocate_resources
 from app.services.evaluate import evaluate_all
+from app.services.monthly_jobs import generate_monthly_reports
 from app.services.rule_recommendations import sync_rule_recommendations
 from app.services.storage import get_storage
 from app.vault import get_vault
@@ -97,6 +98,8 @@ def handle(db: Session, ctx: Ctx, job: Job) -> dict:
         return evaluate_all(db)
     if job.kind == "notify":
         return notifications.process(db, ctx.vault, job.payload)
+    if job.kind == "monthly_reports":
+        return generate_monthly_reports(db, ctx.storage)
     if conn is None:
         raise ValueError("conexão removida")
     if conn.provider == "azure":

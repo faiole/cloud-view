@@ -62,9 +62,11 @@ def test_finance_downloads_own_documents_only(client, oidc, tenants):
 
 def test_operator_cannot_see_invoices(client, oidc, tenants):
     a, _ = tenants
-    _upload(client, a["id"])
+    doc = _upload(client, a["id"]).json()
     ops = _as(oidc, "op", "ops@a.com")
-    assert ops.get(f"/api/tenants/{a['id']}/documents").status_code == 403
+    # Quem vê custos enxerga só o relatório mensal; as faturas continuam restritas ao financeiro
+    assert ops.get(f"/api/tenants/{a['id']}/documents").json() == []
+    assert ops.get(f"/api/tenants/{a['id']}/documents/{doc['id']}/download").status_code == 403
 
 
 def test_rejects_unknown_types_and_duplicates(client, oidc, tenants):

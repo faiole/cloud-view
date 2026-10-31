@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models import CloudAccount, Connection, Job
 from app.services.jobs import enqueue, now
+from app.services.power_schedules import run_schedules
 
 INTERVALS = {
     "discover": timedelta(hours=6),
@@ -17,6 +18,7 @@ INTERVALS = {
     "invoices": timedelta(hours=24),
     "optimization": timedelta(hours=24),
     "evaluate": timedelta(minutes=30),
+    "monthly_reports": timedelta(hours=12),
 }
 CONNECTION_KINDS = ("discover", "costs", "invoices", "aws_health", "optimization")
 
@@ -61,6 +63,9 @@ def tick(db: Session, at: datetime | None = None) -> list[str]:
     created = []
     if _due(last, "evaluate::", "evaluate", at) and enqueue(db, "evaluate"):
         created.append("evaluate")
+    if _due(last, "monthly_reports::", "monthly_reports", at) and enqueue(db, "monthly_reports"):
+        created.append("monthly_reports")
+    created += [f"schedule:{x}" for x in run_schedules(db, at)]
     conns = [
         c
         for c in db.scalars(select(Connection).where(Connection.provider.in_(("aws", "azure", "oci"))))

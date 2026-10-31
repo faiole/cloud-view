@@ -47,7 +47,7 @@ def test_role_permissions(client, oidc, two):
     tadm = _as(oidc, "tadm", "adm@a.com")
     assert fin.get(f"/api/tenants/{a['id']}/members").status_code == 403
     assert fin.get(f"/api/tenants/{a['id']}/documents").status_code == 200
-    assert view.get(f"/api/tenants/{a['id']}/documents").status_code == 403
+    assert view.get(f"/api/tenants/{a['id']}/documents").json() == []  # sem faturas; só relatórios mensais
     assert view.get(f"/api/tenants/{a['id']}/costs/summary").status_code == 200
     assert tadm.get(f"/api/tenants/{a['id']}/members").status_code == 200
 

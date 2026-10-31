@@ -15,7 +15,9 @@ const TABS: { href: string; label: string; perm: Perm | null }[] = [
   { href: "/recursos", label: "Recursos", perm: "resources.read" },
   { href: "/saude", label: "Saúde", perm: "resources.read" },
   { href: "/rede", label: "Rede", perm: "resources.read" },
-  { href: "/documentos", label: "Invoices e notas", perm: "invoices.read" },
+  { href: "/topologia", label: "Topologia", perm: "resources.read" },
+  { href: "/agenda", label: "Agenda", perm: "resources.read" },
+  { href: "/documentos", label: "Documentos", perm: "costs.read" },
   { href: "/contas", label: "Contas", perm: "costs.read" },
   { href: "/acessos", label: "Acessos", perm: "members.manage" },
 ];

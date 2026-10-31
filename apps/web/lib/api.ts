@@ -201,6 +201,7 @@ export const kindLabel: Record<string, string> = {
   nota_fiscal: "Nota fiscal",
   boleto: "Boleto",
   statement: "Demonstrativo",
+  report: "Relatório mensal",
   other: "Outro",
 };
 
@@ -405,3 +406,38 @@ export const recActionLabel: Record<string, string> = {
 export const effortLabel: Record<string, string> = { VeryLow: "muito baixo", Low: "baixo", Medium: "médio", High: "alto", VeryHigh: "muito alto" };
 export const severityLabel: Record<string, string> = { info: "informativo", warning: "atenção", critical: "crítico" };
 export const categoryLabel: Record<string, string> = { cost: "Custos", health: "Saúde", security: "Segurança", platform: "Plataforma" };
+
+// --- Fase 5 --------------------------------------------------------------------------------------
+
+export type TopoInstance = {
+  id: string;
+  name: string | null;
+  provider: string;
+  state: string | null;
+  instance_type: string | null;
+  private_ips: string[];
+  public_ips: string[];
+  exposed: boolean;
+  exposure: string[];
+  security_groups: string[];
+};
+export type TopoSubnet = { id: string; name: string | null; cidr: string | null; public: boolean; instances: TopoInstance[] };
+export type TopoNetwork = { id: string; name: string | null; provider: string; region: string; account: string; cidr: string | null; subnets: TopoSubnet[]; loose_instances: TopoInstance[] };
+export type Topology = { networks: TopoNetwork[]; unplaced: TopoInstance[]; exposed: number };
+export type Schedule = {
+  id: string;
+  name: string;
+  timezone: string;
+  days: number[];
+  start_time: string | null;
+  stop_time: string | null;
+  selector_tag: string | null;
+  resource_ids: string[];
+  enabled: boolean;
+  created_by: string | null;
+  last_start_on: string | null;
+  last_stop_on: string | null;
+  weekly_hours_off: number | null;
+  targets: { id: string; name: string | null; provider: string; state: string | null }[];
+};
+export const DAYS_PT = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];

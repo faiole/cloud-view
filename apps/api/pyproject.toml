@@ -17,6 +17,8 @@ dependencies = [
   "python-multipart>=0.0.12",
   "boto3>=1.35",
   "cryptography>=43",
+  "reportlab>=4.2",
+  "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]

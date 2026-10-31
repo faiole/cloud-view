@@ -96,6 +96,7 @@ export default function Relatorios() {
           <div className="label-sm">Exportar</div>
           <a className="button" href={`/api/tenants/${id}/reports/usage.csv?${query}`}>Detalhe diário (CSV)</a>
           <a className="button ghost" href={`/api/tenants/${id}/reports/statement.csv?month=${month}`}>Demonstrativo de {month} (CSV)</a>
+          <a className="button ghost" href={`/api/tenants/${id}/reports/monthly.pdf?month=${month}`}>Relatório de {month} (PDF)</a>
         </div>
       </div>
 

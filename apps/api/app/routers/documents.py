@@ -17,7 +17,7 @@ from app.core.config import get_settings
 from app.models import Document, DocumentKind, Tenant
 from app.permissions import Perm
 from app.schemas import DocumentOut
-from app.security.deps import require_admin, require_recent_mfa, scoped_db, tenant_access
+from app.security.deps import has_perm, require_admin, require_recent_mfa, scoped_db, tenant_access
 from app.security.session import SessionData
 from app.services import audit
 from app.services.documents import DocumentRejected, store_document
@@ -40,10 +40,14 @@ def list_documents(
     tenant_id: str,
     year: int | None = None,
     kind: DocumentKind | None = None,
-    _: SessionData = Depends(tenant_access(Perm.invoices_read)),
+    user: SessionData = Depends(tenant_access()),
     db: Session = Depends(scoped_db),
 ):
     q = select(Document).where(Document.tenant_id == tenant_id)
+    if not has_perm(user, tenant_id, Perm.invoices_read):
+        if not has_perm(user, tenant_id, Perm.costs_read):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, f"missing_permission:{Perm.invoices_read.value}")
+        q = q.where(Document.kind == "report")  # quem vê custos vê o relatório mensal, não as faturas
     if year:
         q = q.where(Document.billing_period >= date(year, 1, 1), Document.billing_period <= date(year, 12, 1))
     if kind:
@@ -117,11 +121,16 @@ def download_document(
     tenant_id: str,
     doc_id: str,
     request: Request,
-    user: SessionData = Depends(tenant_access(Perm.invoices_read)),
+    user: SessionData = Depends(tenant_access()),
     db: Session = Depends(scoped_db),
     storage=Depends(get_storage),
 ):
     doc = _doc(db, tenant_id, doc_id)
+    allowed = has_perm(user, tenant_id, Perm.invoices_read) or (
+        doc.kind == "report" and has_perm(user, tenant_id, Perm.costs_read)
+    )
+    if not allowed:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, f"missing_permission:{Perm.invoices_read.value}")
     audit.record(db, request, "document.download", user=user, tenant_id=tenant_id, target=doc.filename)
     db.commit()
     return storage.download(doc.storage_key, doc.filename, doc.content_type)

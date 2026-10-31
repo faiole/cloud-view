@@ -630,3 +630,88 @@ class OciHubStatus(BaseModel):
     fingerprint: str | None
     public_key: str | None
     updated_at: datetime | None
+
+
+# --- Fase 5 -----------------------------------------------------------------------------------------
+
+HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
+
+
+class ScheduleIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    timezone: str = Field(default="America/Sao_Paulo", max_length=64)
+    days: list[int] = Field(default=[0, 1, 2, 3, 4], min_length=1, max_length=7)
+    start_time: str | None = Field(default=None, pattern=HHMM)
+    stop_time: str | None = Field(default=None, pattern=HHMM)
+    selector_tag: str | None = Field(default=None, pattern=r"^[^=]+=.+$", max_length=300)
+    resource_ids: list[str] = Field(default=[], max_length=500)
+    enabled: bool = True
+
+    @field_validator("days")
+    @classmethod
+    def _days(cls, v: list[int]) -> list[int]:
+        if any(d < 0 or d > 6 for d in v):
+            raise ValueError("dias de 0 (segunda) a 6 (domingo)")
+        return sorted(set(v))
+
+
+class ScheduleTarget(BaseModel):
+    id: str
+    name: str | None
+    provider: str
+    state: str | None
+
+
+class ScheduleOut(BaseModel):
+    id: str
+    name: str
+    timezone: str
+    days: list[int]
+    start_time: str | None
+    stop_time: str | None
+    selector_tag: str | None
+    resource_ids: list[str]
+    enabled: bool
+    created_by: str | None
+    last_start_on: date | None
+    last_stop_on: date | None
+    weekly_hours_off: float | None
+    targets: list[ScheduleTarget]
+
+
+class TopoInstance(BaseModel):
+    id: str
+    name: str | None
+    provider: str
+    state: str | None
+    instance_type: str | None
+    private_ips: list[str]
+    public_ips: list[str]
+    exposed: bool
+    exposure: list[str]
+    security_groups: list[str]
+
+
+class TopoSubnet(BaseModel):
+    id: str
+    name: str | None
+    cidr: str | None
+    public: bool
+    instances: list[TopoInstance]
+
+
+class TopoNetwork(BaseModel):
+    id: str
+    name: str | None
+    provider: str
+    region: str
+    account: str
+    cidr: str | None
+    subnets: list[TopoSubnet]
+    loose_instances: list[TopoInstance]
+
+
+class Topology(BaseModel):
+    networks: list[TopoNetwork]
+    unplaced: list[TopoInstance]
+    exposed: int

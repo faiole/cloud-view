@@ -581,6 +581,7 @@ def test_scheduler_enqueues_once(client, oidc, setup, ctx):
     # Conexão ainda pendente: só tarefas de conexão, nada de inventário
     assert {k.split(":")[0] for k in first} == {
         "evaluate",
+        "monthly_reports",
         "discover",
         "costs",
         "invoices",

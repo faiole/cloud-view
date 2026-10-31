@@ -297,6 +297,7 @@ class DocumentKind(enum.StrEnum):
     nota_fiscal = "nota_fiscal"
     boleto = "boleto"
     statement = "statement"  # demonstrativo
+    report = "report"  # relatório mensal gerado pelo Cloud View
     other = "other"
 
 
@@ -573,3 +574,31 @@ class NotificationDelivery(Base):
     status: Mapped[str] = mapped_column(String(16))  # sent | failed
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+# --- Fase 5: agenda liga/desliga --------------------------------------------------------------------
+
+
+class PowerSchedule(Base):
+    """Liga e desliga instâncias em horários fixos (no fuso da empresa).
+
+    Alvo: instâncias da empresa com ações rápidas habilitadas (tag cloudview-actions) que também
+    tenham a tag do seletor (ex.: agenda=comercial) ou estejam na lista explícita.
+    """
+
+    __tablename__ = "power_schedule"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenant.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    timezone: Mapped[str] = mapped_column(String(64), default="America/Sao_Paulo")
+    days: Mapped[list] = mapped_column(JSON, default=lambda: [0, 1, 2, 3, 4])  # 0 = segunda
+    start_time: Mapped[str | None] = mapped_column(String(5), nullable=True)  # "08:00"; None = só desliga
+    stop_time: Mapped[str | None] = mapped_column(String(5), nullable=True)  # "20:00"; None = só liga
+    selector_tag: Mapped[str | None] = mapped_column(String(300), nullable=True)  # "chave=valor"
+    resource_ids: Mapped[list] = mapped_column(JSON, default=list)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    last_start_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    last_stop_on: Mapped[date | None] = mapped_column(Date, nullable=True)

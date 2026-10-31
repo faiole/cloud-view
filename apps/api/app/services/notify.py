@@ -91,7 +91,9 @@ def _text(p: dict) -> str:
     return f"{SEVERITY_PT.get(p['severity'], p['severity'])}: {who}{p['title']}\n{p['message']}\n{p['link']}"
 
 
-def send_email(ch: NotificationChannel, p: dict) -> None:
+def send_email(
+    ch: NotificationChannel, p: dict, attachments: list[tuple[str, bytes, str]] | None = None
+) -> None:
     s = get_settings()
     if not s.smtp_host:
         raise RuntimeError("SMTP não configurado (CV_SMTP_HOST)")
@@ -100,6 +102,9 @@ def send_email(ch: NotificationChannel, p: dict) -> None:
     msg["From"] = s.smtp_from
     msg["To"] = ", ".join(ch.emails)
     msg.set_content(_text(p) + "\n\n— Cloud View")
+    for filename, data, mime in attachments or []:
+        maintype, subtype = mime.split("/", 1)
+        msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
     with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=20) as smtp:
         if s.smtp_starttls:
             smtp.starttls(context=ssl.create_default_context())
