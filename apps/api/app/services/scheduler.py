@@ -15,8 +15,10 @@ INTERVALS = {
     "aws_health": timedelta(minutes=15),
     "costs": timedelta(hours=12),
     "invoices": timedelta(hours=24),
+    "optimization": timedelta(hours=24),
+    "evaluate": timedelta(minutes=30),
 }
-CONNECTION_KINDS = ("discover", "costs", "invoices", "aws_health")
+CONNECTION_KINDS = ("discover", "costs", "invoices", "aws_health", "optimization")
 ACCOUNT_KINDS = ("inventory", "health")
 
 
@@ -38,6 +40,8 @@ def tick(db: Session, at: datetime | None = None) -> list[str]:
     at = at or now()
     last = _last_runs(db)
     created = []
+    if _due(last, "evaluate::", "evaluate", at) and enqueue(db, "evaluate"):
+        created.append("evaluate")
     conns = db.scalars(
         select(Connection).where(Connection.provider == "aws", Connection.role_arn.is_not(None))
     ).all()

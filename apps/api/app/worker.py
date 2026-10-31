@@ -15,12 +15,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.aws.session import AwsHub
-from app.collectors import aws_actions, aws_billing, aws_inventory
+from app.collectors import aws_actions, aws_billing, aws_inventory, aws_optimization
 from app.collectors.common import Ctx, error_text
 from app.core.db import apply_tenant_scope, get_sessionmaker
 from app.models import ActionRequest, CloudAccount, Connection, Job
-from app.services import jobs, scheduler
+from app.services import jobs, notifications, scheduler
 from app.services.allocation import reallocate_resources
+from app.services.evaluate import evaluate_all
+from app.services.rule_recommendations import sync_rule_recommendations
 from app.services.storage import get_storage
 from app.vault import get_vault
 
@@ -34,6 +36,10 @@ def handle(db: Session, ctx: Ctx, job: Job) -> dict:
     if job.kind == "action":
         req = db.get(ActionRequest, job.payload["action_request_id"])
         return aws_actions.execute_action(db, ctx, req)
+    if job.kind == "evaluate":
+        return evaluate_all(db)
+    if job.kind == "notify":
+        return notifications.process(db, ctx.vault, job.payload)
     if conn is None:
         raise ValueError("conexão removida")
     if job.kind == "discover":
@@ -44,7 +50,11 @@ def handle(db: Session, ctx: Ctx, job: Job) -> dict:
             conn.last_error = error_text(e)[:2000]
             raise
     if job.kind == "costs":
-        return aws_billing.collect_costs(db, ctx, conn)
+        out = aws_billing.collect_costs(db, ctx, conn)
+        jobs.enqueue(db, "evaluate")  # orçamentos e anomalias com os custos novos
+        return out
+    if job.kind == "optimization":
+        return aws_optimization.collect_optimization(db, ctx, conn)
     if job.kind == "invoices":
         return aws_billing.collect_invoices(db, ctx, conn)
     if job.kind == "aws_health":
@@ -54,6 +64,7 @@ def handle(db: Session, ctx: Ctx, job: Job) -> dict:
     if job.kind == "inventory":
         out = aws_inventory.collect_inventory(db, ctx, conn, acc)
         reallocate_resources(db, acc.id)
+        out.update(sync_rule_recommendations(db, acc))
         return out
     if job.kind == "health":
         return aws_inventory.collect_health(db, ctx, conn, acc)
@@ -75,7 +86,11 @@ class Worker:
 
     def ctx(self, db: Session) -> Ctx:
         if self._ctx is None or time.time() - self._ctx[0] > HUB_REFRESH:
-            self._ctx = (time.time(), Ctx(hub=AwsHub.from_settings(db, get_vault()), storage=get_storage()))
+            vault = get_vault()
+            self._ctx = (
+                time.time(),
+                Ctx(hub=AwsHub.from_settings(db, vault), storage=get_storage(), vault=vault),
+            )
         return self._ctx[1]
 
     def run_once(self) -> bool:

@@ -146,16 +146,28 @@ def collect_inventory(db: Session, ctx: Ctx, conn: Connection, acc: CloudAccount
     counts: dict[str, int] = {}
     errors: dict[str, str] = {}
 
+    patch_errors: dict[str, str] = {}
     for region in regions:
         try:
             _collect_region(client(sess, "ec2", region), region, up, counts)
         except Exception as e:  # noqa: BLE001 - uma região com erro não interrompe as demais
             errors[region] = error_text(e)
+            continue
+        try:
+            _collect_patches(client(sess, "ssm", region), region, up)
+        except Exception as e:  # noqa: BLE001 - SSM é opcional
+            patch_errors[region] = error_text(e)
     removed = up.prune([r for r in regions if r not in errors])
     acc.last_inventory_at = now()
     acc.last_error = "; ".join(f"{r}: {m}" for r, m in errors.items())[:2000] or None
     db.flush()
-    return {"regions": len(regions), "counts": counts, "removed": removed, "errors": errors}
+    return {
+        "regions": len(regions),
+        "counts": counts,
+        "removed": removed,
+        "errors": errors,
+        "patch_errors": patch_errors,
+    }
 
 
 def _collect_region(ec2, region: str, up: _Upserter, counts: dict[str, int]) -> None:
@@ -332,6 +344,70 @@ def _collect_region(ec2, region: str, up: _Upserter, counts: dict[str, int]) -> 
             findings=f,
         )
         bump("elastic_ip")
+
+
+# --- Atualizações (SSM Patch Manager) ------------------------------------------------------------
+
+
+def _collect_patches(ssm, region: str, up: _Upserter) -> None:
+    instances = {
+        k[2]: r for k, r in up.by_key.items() if k[0] == region and k[1] == "ec2_instance" and k in up.seen
+    }
+    if not instances:
+        return
+    managed = {
+        i["InstanceId"] for i in paginate(ssm, "describe_instance_information", "InstanceInformationList")
+    }
+    states = {}
+    ids = sorted(managed & instances.keys())
+    for i in range(0, len(ids), 50):
+        for st in paginate(
+            ssm, "describe_instance_patch_states", "InstancePatchStates", InstanceIds=ids[i : i + 50]
+        ):
+            states[st["InstanceId"]] = st
+    for iid, res in instances.items():
+        findings = [f for f in res.findings or [] if not f["code"].startswith(("patches_", "ssm_"))]
+        if iid not in managed:
+            patch = {"managed": False}
+            if res.state == "running":
+                findings.append(
+                    finding("ssm_unmanaged", "info", "Sem agente SSM: não dá para acompanhar atualizações")
+                )
+        else:
+            st = states.get(iid, {})
+            end = st.get("OperationEndTime")
+            patch = {
+                "managed": True,
+                "critical": st.get("CriticalNonCompliantCount", 0),
+                "security": st.get("SecurityNonCompliantCount", 0),
+                "missing": st.get("MissingCount", 0),
+                "failed": st.get("FailedCount", 0),
+                "pending_reboot": st.get("InstalledPendingRebootCount", 0),
+                "last_scan": end.isoformat() if isinstance(end, datetime) else end,
+                "baseline": st.get("BaselineId"),
+            }
+            if patch["critical"]:
+                findings.append(
+                    finding(
+                        "patches_missing_critical",
+                        "critical",
+                        f"{patch['critical']} atualizações críticas pendentes",
+                    )
+                )
+            if patch["security"]:
+                findings.append(
+                    finding(
+                        "patches_missing_security",
+                        "warning",
+                        f"{patch['security']} atualizações de segurança pendentes",
+                    )
+                )
+            if patch["failed"]:
+                findings.append(
+                    finding("patches_failed", "warning", f"{patch['failed']} atualizações falharam")
+                )
+        res.attributes = {**(res.attributes or {}), "patch": patch}
+        res.findings = findings
 
 
 # --- Saúde ----------------------------------------------------------------------------------------

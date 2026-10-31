@@ -15,6 +15,7 @@ class Perm(enum.StrEnum):
     invoices_read = "invoices.read"  # baixar invoices e notas fiscais
     actions_execute = "actions.execute"  # ações rápidas (reiniciar, ligar, desligar)
     members_manage = "members.manage"  # convidar/remover usuários do próprio cliente
+    finops_manage = "finops.manage"  # orçamentos, status de recomendações, reconhecer alertas de custo
 
 
 class TenantRole(enum.StrEnum):
@@ -29,7 +30,9 @@ ROLE_PERMS: dict[TenantRole, frozenset[Perm]] = {
     TenantRole.operator: frozenset(
         {Perm.resources_read, Perm.costs_read, Perm.reports_read, Perm.actions_execute}
     ),
-    TenantRole.finance: frozenset({Perm.costs_read, Perm.reports_read, Perm.invoices_read}),
+    TenantRole.finance: frozenset(
+        {Perm.costs_read, Perm.reports_read, Perm.invoices_read, Perm.finops_manage}
+    ),
     TenantRole.viewer: frozenset({Perm.resources_read, Perm.costs_read, Perm.reports_read}),
 }
 

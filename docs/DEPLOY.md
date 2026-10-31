@@ -38,7 +38,8 @@ git clone https://github.com/faiole/cloud-view.git && cd cloud-view
 ./scripts/setup.sh painel.suaempresa.com.br
 ```
 
-5. Edite o `.env` e configure o SMTP real (convites e redefinição de senha) e, se quiser, a rede
+5. Edite o `.env` e configure o SMTP real (convites, redefinição de senha e alertas por e-mail;
+   em produção use `SMTP_STARTTLS=true`) e, se quiser, a rede
    que pode abrir o console do Keycloak (`CV_ADMIN_CIDRS`).
 6. Suba:
 
@@ -65,6 +66,9 @@ O Caddy emite o certificado HTTPS sozinho na primeira requisição.
    ExternalId e mostra os comandos do CloudFormation (e do StackSet, para a Organization).
 3. Implante a stack, clique em **Testar** e depois em **Sincronizar agora**.
 4. Em *Contas de nuvem*, atribua as contas descobertas às empresas.
+5. (Recomendado) Na conta management, habilite o **Cost Optimization Hub** e crie um monitor no
+   **Cost Anomaly Detection**. Para patches, as instâncias precisam do agente SSM e de uma
+   *patch baseline*.
 
 ## Operação
 

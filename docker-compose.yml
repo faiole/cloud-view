@@ -23,6 +23,12 @@ x-api-env: &api-env
   CV_DOCUMENTS_BUCKET: ${CV_DOCUMENTS_BUCKET:-}
   CV_S3_ENDPOINT_URL: ${CV_S3_ENDPOINT_URL:-}
   CV_VAULT_PUBLIC_KEY: /run/vault-public/vault-public.pem
+  CV_SMTP_HOST: ${SMTP_HOST:-mailpit}
+  CV_SMTP_PORT: ${SMTP_PORT:-1025}
+  CV_SMTP_FROM: ${SMTP_FROM:-nao-responda@cloudview.local}
+  CV_SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
+  CV_SMTP_USER: ${SMTP_USER:-}
+  CV_SMTP_PASSWORD: ${SMTP_PASSWORD:-}
 
 x-restart: &restart
   restart: unless-stopped

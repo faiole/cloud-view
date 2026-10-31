@@ -4,11 +4,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import get_settings
 from app.routers import (
     admin_accounts,
+    admin_alerts,
     admin_users,
     audit,
     auth,
     connections,
     documents,
+    finops,
     health,
     inventory,
     reports,
@@ -45,10 +47,12 @@ def create_app() -> FastAPI:
         tenants.router,
         reports.router,
         inventory.router,
+        finops.router,
         documents.router,
         admin_users.router,
         admin_accounts.router,
         connections.router,
+        admin_alerts.router,
         audit.router,
     ):
         app.include_router(r, prefix="/api")

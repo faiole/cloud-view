@@ -401,3 +401,140 @@ class ActionOut(BaseModel):
 
 class HubPrincipalIn(BaseModel):
     principal_arn: str = Field(pattern=r"^arn:aws(-[a-z]+)*:iam::\d{12}:(user|role)/[\w+=,.@/-]+$")
+
+
+# --- Fase 2 -----------------------------------------------------------------------------------------
+
+
+class RecommendationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    source: str
+    action_type: str
+    resource_type: str | None
+    resource_native_id: str | None
+    region: str | None
+    title: str
+    current: str | None
+    recommended: str | None
+    monthly_savings: Decimal
+    monthly_cost: Decimal | None
+    currency: str
+    savings_pct: Decimal | None
+    effort: str | None
+    restart_needed: bool | None
+    estimated: bool
+    status: str
+    status_by: str | None
+    status_note: str | None
+    first_seen: datetime
+    last_seen: datetime
+    account_native_id: str | None = None
+
+
+class RecommendationSummary(BaseModel):
+    open: int
+    savings: list[Total]
+    by_action: dict[str, int]
+    items: list[RecommendationOut]
+
+
+class RecommendationStatusIn(BaseModel):
+    status: str = Field(pattern=r"^(open|dismissed|done)$")
+    note: str | None = Field(default=None, max_length=500)
+
+
+class CoverageMonth(BaseModel):
+    month: date
+    covered: Decimal
+    on_demand: Decimal
+    total: Decimal
+    coverage_pct: Decimal | None
+
+
+class BudgetIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    amount: Decimal = Field(gt=0)
+    currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
+    accounts: list[str] = []
+    services: list[str] = []
+    tag: str | None = Field(default=None, pattern=r"^[^=]+=.*$")
+    thresholds: list[int] = Field(default=[50, 80, 100], min_length=1, max_length=6)
+    alert_on_forecast: bool = True
+
+    @field_validator("thresholds")
+    @classmethod
+    def _thr(cls, v: list[int]) -> list[int]:
+        if any(x < 1 or x > 500 for x in v):
+            raise ValueError("limites entre 1% e 500%")
+        return sorted(set(v))
+
+
+class BudgetOut(BaseModel):
+    id: str
+    name: str
+    amount: Decimal
+    currency: str
+    accounts: list[str]
+    services: list[str]
+    tag: str | None
+    thresholds: list[int]
+    alert_on_forecast: bool
+    actual: Decimal | None
+    forecast: Decimal | None
+    pct: Decimal | None
+    last_evaluated_at: datetime | None
+
+
+class AlertOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    tenant_id: str | None
+    type: str
+    category: str
+    severity: str
+    title: str
+    message: str
+    data: dict
+    status: str
+    status_by: str | None
+    created_at: datetime
+    updated_at: datetime
+    resolved_at: datetime | None
+    tenant_name: str | None = None
+
+
+class ChannelIn(BaseModel):
+    type: str = Field(pattern=r"^(email|slack|teams|webhook)$")
+    name: str = Field(min_length=1, max_length=200)
+    emails: list[EmailStr] = []
+    url: str | None = Field(default=None, max_length=2000)
+    min_severity: str = Field(default="warning", pattern=r"^(info|warning|critical)$")
+    categories: list[str] = ["cost", "health", "security"]
+
+    @field_validator("categories")
+    @classmethod
+    def _cats(cls, v: list[str]) -> list[str]:
+        allowed = {"cost", "health", "security", "platform"}
+        if not v or set(v) - allowed:
+            raise ValueError(f"categorias válidas: {', '.join(sorted(allowed))}")
+        return v
+
+
+class ChannelOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    tenant_id: str | None
+    type: str
+    name: str
+    emails: list[str]
+    target_hint: str | None
+    min_severity: str
+    categories: list[str]
+    enabled: bool
+    created_at: datetime
+    signing_secret: str | None = None  # só na criação de webhook
+    last_delivery: str | None = None

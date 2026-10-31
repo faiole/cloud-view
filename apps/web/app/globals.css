@@ -122,3 +122,29 @@ pre.code { background: var(--bg); border: 1px solid var(--line); border-radius: 
 .onboarding p { margin: 0; }
 .small-value { font-size: 18px; }
 td.small, .small { font-size: 12.5px; }
+
+/* Fase 2: otimização, orçamentos, alertas */
+button.chip { background: var(--surface); color: var(--ink); cursor: pointer; }
+.chip-on { border-color: var(--accent) !important; color: var(--accent) !important; }
+.budgets { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.budget-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.budget-head h2 { margin: 0; }
+.budget-nums { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-variant-numeric: tabular-nums; }
+.meter { position: relative; height: 12px; background: var(--bg); border-radius: 6px; overflow: hidden; }
+.meter-fill { height: 100%; border-radius: 6px; }
+.meter-fill.ok { background: var(--ok); }
+.meter-fill.warn { background: var(--warn); }
+.meter-fill.bad { background: var(--bad); }
+.meter-forecast { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); opacity: .6; }
+.meter-tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.alerts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.alert { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0 12px 12px; border-bottom: 1px solid var(--line); border-left: 3px solid var(--line); }
+.alert.sev-critical { border-left-color: var(--bad); }
+.alert.sev-warning { border-left-color: var(--warn); }
+.alert.dim { opacity: .65; }
+.alert-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.alert-main p { margin: 0; }
+.alert-title { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sev-pill-critical { color: var(--bad); border-color: currentColor; }
+.sev-pill-warning { color: var(--warn); border-color: currentColor; }
+fieldset.cats { border: 0; padding: 0; margin: 0; display: flex; gap: 10px; flex-wrap: wrap; }

@@ -579,7 +579,14 @@ def test_scheduler_enqueues_once(client, oidc, setup, ctx):
         first = scheduler.tick(db)
         db.commit()
     # Conexão ainda pendente: só tarefas de conexão, nada de inventário
-    assert {k.split(":")[0] for k in first} == {"discover", "costs", "invoices", "aws_health"}
+    assert {k.split(":")[0] for k in first} == {
+        "evaluate",
+        "discover",
+        "costs",
+        "invoices",
+        "aws_health",
+        "optimization",
+    }
     _run(ctx, "discover", s["conn"]["id"])
     with _db() as db:
         second = scheduler.tick(db)

@@ -11,6 +11,7 @@ from app.models import CloudAccount, Connection
 class Ctx:
     hub: AwsHub
     storage: object | None = None
+    vault: object | None = None
 
 
 def now() -> datetime:

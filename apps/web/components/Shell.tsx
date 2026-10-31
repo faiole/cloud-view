@@ -9,6 +9,7 @@ import { MeContext } from "@/lib/useMe";
 const NAV = [
   { href: "/", label: "Visão geral" },
   { href: "/clientes", label: "Empresas" },
+  { href: "/alertas", label: "Alertas", admin: true },
   { href: "/conexoes", label: "Conexões", admin: true },
   { href: "/contas", label: "Contas de nuvem", admin: true },
   { href: "/usuarios", label: "Usuários", admin: true },

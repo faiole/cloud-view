@@ -7,7 +7,8 @@ export type Perm =
   | "reports.read"
   | "invoices.read"
   | "actions.execute"
-  | "members.manage";
+  | "members.manage"
+  | "finops.manage";
 
 export type Me = {
   id: string;
@@ -174,9 +175,9 @@ export const roleHelp: Record<Role, string> = {
 };
 
 const ROLE_PERMS: Record<Role, Perm[]> = {
-  tenant_admin: ["resources.read", "costs.read", "reports.read", "invoices.read", "actions.execute", "members.manage"],
+  tenant_admin: ["resources.read", "costs.read", "reports.read", "invoices.read", "actions.execute", "members.manage", "finops.manage"],
   operator: ["resources.read", "costs.read", "reports.read", "actions.execute"],
-  finance: ["costs.read", "reports.read", "invoices.read"],
+  finance: ["costs.read", "reports.read", "invoices.read", "finops.manage"],
   viewer: ["resources.read", "costs.read", "reports.read"],
 };
 
@@ -308,3 +309,85 @@ export function ago(iso: string | null): string {
   if (s < 86400) return `há ${Math.round(s / 3600)} h`;
   return `há ${Math.round(s / 86400)} d`;
 }
+
+// --- Fase 2 --------------------------------------------------------------------------------------
+
+export type Recommendation = {
+  id: string;
+  source: string;
+  action_type: string;
+  resource_type: string | null;
+  resource_native_id: string | null;
+  region: string | null;
+  title: string;
+  current: string | null;
+  recommended: string | null;
+  monthly_savings: string;
+  monthly_cost: string | null;
+  currency: string;
+  savings_pct: string | null;
+  effort: string | null;
+  restart_needed: boolean | null;
+  estimated: boolean;
+  status: string;
+  status_by: string | null;
+  status_note: string | null;
+  account_native_id: string | null;
+};
+export type RecommendationSummary = { open: number; savings: Total[]; by_action: Record<string, number>; items: Recommendation[] };
+export type Coverage = { month: string; covered: string; on_demand: string; total: string; coverage_pct: string | null };
+export type Budget = {
+  id: string;
+  name: string;
+  amount: string;
+  currency: string;
+  accounts: string[];
+  services: string[];
+  tag: string | null;
+  thresholds: number[];
+  alert_on_forecast: boolean;
+  actual: string | null;
+  forecast: string | null;
+  pct: string | null;
+  last_evaluated_at: string | null;
+};
+export type Alert = {
+  id: string;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  type: string;
+  category: string;
+  severity: "info" | "warning" | "critical";
+  title: string;
+  message: string;
+  status: string;
+  status_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export type Channel = {
+  id: string;
+  type: string;
+  name: string;
+  emails: string[];
+  target_hint: string | null;
+  min_severity: string;
+  categories: string[];
+  enabled: boolean;
+  signing_secret: string | null;
+  last_delivery: string | null;
+};
+
+export const recActionLabel: Record<string, string> = {
+  Rightsize: "Redimensionar",
+  Stop: "Desligar ocioso",
+  Upgrade: "Atualizar",
+  PurchaseSavingsPlans: "Savings Plans",
+  PurchaseReservedInstances: "Reservas",
+  MigrateToGraviton: "Graviton",
+  Delete: "Remover sem uso",
+  ScaleIn: "Reduzir capacidade",
+};
+export const effortLabel: Record<string, string> = { VeryLow: "muito baixo", Low: "baixo", Medium: "médio", High: "alto", VeryHigh: "muito alto" };
+export const severityLabel: Record<string, string> = { info: "informativo", warning: "atenção", critical: "crítico" };
+export const categoryLabel: Record<string, string> = { cost: "Custos", health: "Saúde", security: "Segurança", platform: "Plataforma" };

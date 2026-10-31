@@ -4,7 +4,7 @@ import json
 import secrets
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -161,7 +161,7 @@ def sync_connection(
 @router.get("/jobs", response_model=list[JobOut])
 def list_jobs(
     connection_id: str | None = None,
-    status_: str | None = None,
+    status_: str | None = Query(None, alias="status"),
     limit: int = 100,
     _: SessionData = Depends(require_admin),
     db: Session = Depends(scoped_db),

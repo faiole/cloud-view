@@ -135,3 +135,19 @@ def test_rls_on_costs_and_documents(engines):
         assert c.execute(text("SELECT count(*) FROM document")).scalar() == 0
         # Não consegue "puxar" custos sem dono ou de outro cliente para si
         assert c.execute(text("UPDATE cost_line SET tenant_id = 'b' WHERE tenant_id IS NULL")).rowcount == 0
+
+
+def test_scope_survives_commit_in_same_session(engines):
+    """Regressão: depois de um commit a sessão continua enxergando os dados do seu escopo."""
+    from sqlalchemy.orm import Session
+
+    from app.core.db import apply_tenant_scope
+
+    _, app = engines
+    with Session(app) as db:
+        apply_tenant_scope(db, tenant_ids=["a"], is_admin=False)
+        assert db.execute(text("SELECT count(*) FROM tenant")).scalar() == 1
+        db.commit()
+        assert db.execute(text("SELECT count(*) FROM tenant")).scalar() == 1
+        db.rollback()
+        assert db.execute(text("SELECT count(*) FROM tenant")).scalar() == 1

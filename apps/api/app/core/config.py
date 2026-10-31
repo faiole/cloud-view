@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     vault_public_key: str | None = "/run/vault-public/vault-public.pem"
     vault_private_keys: str | None = None  # caminhos separados por vírgula (somente workers)
 
+    # E-mail das notificações (mesmo SMTP do Keycloak)
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_from: str = "nao-responda@cloudview.local"
+    smtp_starttls: bool = True
+    smtp_user: str | None = None
+    smtp_password: str | None = Field(default=None, repr=False)
+
     # Documentos (invoices / notas fiscais)
     storage_backend: str = "local"  # local | s3 (qualquer S3 compatível: AWS, MinIO, OCI, R2...)
     storage_local_dir: str = "/data/documents"

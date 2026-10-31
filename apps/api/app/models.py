@@ -426,3 +426,130 @@ class ActionRequest(Base):
     requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     result: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+# --- Fase 2: otimização, orçamentos, anomalias, alertas ------------------------------------------
+
+
+class Recommendation(Base):
+    __tablename__ = "recommendation"
+    __table_args__ = (
+        UniqueConstraint("source", "native_id"),
+        Index("ix_recommendation_tenant_status", "tenant_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    cloud_account_id: Mapped[str | None] = mapped_column(
+        ForeignKey("cloud_account.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    source: Mapped[str] = mapped_column(String(32))  # cost_optimization_hub | rules
+    native_id: Mapped[str] = mapped_column(String(300))
+    action_type: Mapped[str] = mapped_column(String(40))  # Rightsize, Delete, MigrateToGraviton, ...
+    resource_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    resource_native_id: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    region: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    title: Mapped[str] = mapped_column(String(300))
+    current: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    recommended: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    monthly_savings: Mapped[Decimal] = mapped_column(Money, default=Decimal(0))
+    monthly_cost: Mapped[Decimal | None] = mapped_column(Money, nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), default="USD")
+    savings_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 2), nullable=True)
+    effort: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    restart_needed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    estimated: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )  # True = estimativa própria (preço de tabela)
+    tags: Mapped[dict] = mapped_column(JSONType, default=dict)
+    status: Mapped[str] = mapped_column(String(16), default="open")  # open | dismissed | done | resolved
+    status_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    status_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class CommitmentCoverage(Base):
+    """Cobertura de Savings Plans por conta e mês (Cost Explorer)."""
+
+    __tablename__ = "commitment_coverage"
+    __table_args__ = (UniqueConstraint("cloud_account_id", "month"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    cloud_account_id: Mapped[str] = mapped_column(ForeignKey("cloud_account.id", ondelete="CASCADE"))
+    month: Mapped[date] = mapped_column(Date)
+    covered: Mapped[Decimal] = mapped_column(Money)
+    on_demand: Mapped[Decimal] = mapped_column(Money)
+    total: Mapped[Decimal] = mapped_column(Money)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Budget(Base):
+    __tablename__ = "budget"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(ForeignKey("tenant.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    amount: Mapped[Decimal] = mapped_column(Money)
+    currency: Mapped[str] = mapped_column(String(3), default="USD")
+    # Filtros opcionais: {"accounts": ["111..."], "services": ["Amazon EC2"], "tag": "chave=valor"}
+    scope: Mapped[dict] = mapped_column(JSON, default=dict)
+    thresholds: Mapped[list] = mapped_column(JSON, default=lambda: [50, 80, 100])
+    alert_on_forecast: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    # Último cálculo (para a tela)
+    last_actual: Mapped[Decimal | None] = mapped_column(Money, nullable=True)
+    last_forecast: Mapped[Decimal | None] = mapped_column(Money, nullable=True)
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Alert(Base):
+    __tablename__ = "alert"
+    __table_args__ = (Index("ix_alert_tenant_status", "tenant_id", "status"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True)  # None = alerta da plataforma
+    type: Mapped[str] = mapped_column(String(40))
+    category: Mapped[str] = mapped_column(String(16))  # cost | health | security | platform
+    severity: Mapped[str] = mapped_column(String(16))  # info | warning | critical
+    title: Mapped[str] = mapped_column(String(300))
+    message: Mapped[str] = mapped_column(Text)
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    dedupe_key: Mapped[str] = mapped_column(String(300), unique=True)
+    status: Mapped[str] = mapped_column(String(16), default="open")  # open | acknowledged | resolved
+    status_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class NotificationChannel(Base):
+    __tablename__ = "notification_channel"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)  # None = plataforma
+    type: Mapped[str] = mapped_column(String(16))  # email | slack | teams | webhook
+    name: Mapped[str] = mapped_column(String(200))
+    emails: Mapped[list] = mapped_column(JSON, default=list)
+    # URL do Slack/Teams/webhook e segredo de assinatura ficam cifrados no cofre
+    secret_ref: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    target_hint: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    min_severity: Mapped[str] = mapped_column(String(16), default="warning")
+    categories: Mapped[list] = mapped_column(JSON, default=lambda: ["cost", "health", "security"])
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class NotificationDelivery(Base):
+    __tablename__ = "notification_delivery"
+    __table_args__ = (UniqueConstraint("alert_id", "channel_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    alert_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)  # None = teste
+    channel_id: Mapped[str] = mapped_column(ForeignKey("notification_channel.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(16))  # sent | failed
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

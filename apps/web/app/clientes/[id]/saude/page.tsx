@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ago, api, type HealthSummary } from "@/lib/api";
+import { ago, api, type HealthSummary, type Resource } from "@/lib/api";
 
 function when(iso: string | null) {
   return iso ? new Date(iso).toLocaleString("pt-BR") : "—";
@@ -11,7 +11,15 @@ function when(iso: string | null) {
 export default function Saude() {
   const { id } = useParams<{ id: string }>();
   const [h, setH] = useState<HealthSummary | null>(null);
-  useEffect(() => { api<HealthSummary>(`/tenants/${id}/health`).then(setH); }, [id]);
+  const [instances, setInstances] = useState<Resource[]>([]);
+  useEffect(() => {
+    api<HealthSummary>(`/tenants/${id}/health`).then(setH);
+    api<Resource[]>(`/tenants/${id}/resources?type=ec2_instance`).then(setInstances);
+  }, [id]);
+  type Patch = { managed?: boolean; critical?: number; security?: number; missing?: number; failed?: number; pending_reboot?: number; last_scan?: string };
+  const patchOf = (r: Resource) => (r.attributes.patch ?? {}) as Patch;
+  const managed = instances.filter((r) => patchOf(r).managed);
+  const pending = managed.filter((r) => (patchOf(r).critical ?? 0) + (patchOf(r).security ?? 0) > 0);
 
   return (
     <div className="stack">
@@ -42,6 +50,31 @@ export default function Saude() {
           </table>
         </div>
       )}
+
+      <div className="card table-wrap">
+        <h2>Atualizações (SSM Patch Manager)</h2>
+        <p className="muted">{managed.length} de {instances.length} instâncias gerenciadas pelo SSM · {pending.length} com atualizações críticas ou de segurança pendentes.</p>
+        {managed.length > 0 && (
+          <table>
+            <thead><tr><th>Instância</th><th style={{ textAlign: "right" }}>Críticas</th><th style={{ textAlign: "right" }}>Segurança</th><th style={{ textAlign: "right" }}>Faltando</th><th>Reinício pendente</th><th>Última verificação</th></tr></thead>
+            <tbody>
+              {managed.sort((a, b) => (patchOf(b).critical ?? 0) - (patchOf(a).critical ?? 0)).map((r) => {
+                const p = patchOf(r);
+                return (
+                  <tr key={r.id}>
+                    <td><strong>{r.name || r.native_id}</strong><br /><span className="muted mono small">{r.native_id}</span></td>
+                    <td className="num">{p.critical ? <span className="pill bad">{p.critical}</span> : 0}</td>
+                    <td className="num">{p.security ?? 0}</td>
+                    <td className="num">{p.missing ?? 0}</td>
+                    <td>{p.pending_reboot ? `${p.pending_reboot} pacotes` : "não"}</td>
+                    <td>{p.last_scan ? new Date(p.last_scan).toLocaleString("pt-BR") : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
 
       <div className="card table-wrap">
         <h2>Eventos abertos e manutenções agendadas</h2>
