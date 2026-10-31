@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Connection, HealthEvent, Resource
+from app.resource_types import INSTANCE_TYPES
 from app.services.alerts import raise_alert, resolve_missing
 from app.services.anomalies import detect_anomalies
 from app.services.budgets import evaluate_budgets
@@ -21,7 +22,7 @@ def health_alerts(db: Session) -> int:
     ):
         key = f"health:{ev.id}"
         keep.add(key)
-        if ev.source == "ec2_status":
+        if ev.source in ("ec2_status", "azure_resource_health"):
             sev = "critical"
         elif ev.category == "issue":
             sev = "warning"
@@ -49,7 +50,7 @@ def health_alerts(db: Session) -> int:
 def security_alerts(db: Session) -> int:
     keep, n = set(), 0
     for r in db.scalars(
-        select(Resource).where(Resource.tenant_id.is_not(None), Resource.type == "ec2_instance")
+        select(Resource).where(Resource.tenant_id.is_not(None), Resource.type.in_(INSTANCE_TYPES))
     ):
         codes = {f["code"] for f in r.findings or []}
         name = r.name or r.native_id

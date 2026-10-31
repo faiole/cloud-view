@@ -1,4 +1,4 @@
-"""Execução das ações rápidas com a role CloudViewOperator (escrita restrita por tag)."""
+"""Execução das ações rápidas: AWS (role CloudViewOperator, restrita por tag) e Azure (role Cloud View Operator)."""
 
 import re
 
@@ -15,18 +15,23 @@ def execute_action(db: Session, ctx: Ctx, req: ActionRequest) -> dict:
     if res is None:
         raise ValueError("recurso não existe mais")
     conn = res.account.connection
-    if conn is None or not conn.role_arn:
+    if conn is None or not conn.collectable:
         raise ValueError("conta sem conexão configurada")
     who = "cv-" + re.sub(r"[^\w+=,.@-]", "-", req.requested_by)
     req.status = "running"
     db.flush()
     try:
-        sess = account_session(ctx, conn, res.account.native_id, operator=True, who=who[:64])
-        ec2 = client(sess, "ec2", res.region)
-        getattr(ec2, ACTIONS[req.action])(InstanceIds=[res.native_id])
-        state = ec2.describe_instances(InstanceIds=[res.native_id])["Reservations"][0]["Instances"][0][
-            "State"
-        ]["Name"]
+        if res.provider == "azure":
+            from app.collectors import azure
+
+            state = azure.vm_action(db, ctx, res, req.action)
+        else:
+            sess = account_session(ctx, conn, res.account.native_id, operator=True, who=who[:64])
+            ec2 = client(sess, "ec2", res.region)
+            getattr(ec2, ACTIONS[req.action])(InstanceIds=[res.native_id])
+            state = ec2.describe_instances(InstanceIds=[res.native_id])["Reservations"][0]["Instances"][0][
+                "State"
+            ]["Name"]
     except Exception as e:  # noqa: BLE001
         req.status = "failed"
         req.finished_at = now()

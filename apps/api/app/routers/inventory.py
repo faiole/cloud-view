@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import ActionRequest, CloudAccount, HealthEvent, Resource
 from app.permissions import Perm
+from app.resource_types import INSTANCE_TYPES, NETWORK_TYPES, RUNNING, STOPPED
 from app.schemas import (
     ActionIn,
     ActionOut,
@@ -22,7 +23,7 @@ from app.services.jobs import enqueue
 
 router = APIRouter(prefix="/tenants/{tenant_id}", tags=["inventory"])
 
-ALLOWED_FROM = {"reboot": {"running"}, "stop": {"running"}, "start": {"stopped"}}
+ALLOWED_FROM = {"reboot": RUNNING, "stop": RUNNING, "start": STOPPED}
 
 
 def _out(r: Resource) -> ResourceOut:
@@ -49,7 +50,8 @@ def list_resources(
 ):
     stmt = _base(tenant_id).order_by(Resource.type, Resource.name, Resource.native_id).limit(2000)
     if type:
-        stmt = stmt.where(Resource.type == type)
+        types = [t for t in type.split(",") if t]  # ex.: "ec2_instance,vm" = instâncias de todas as nuvens
+        stmt = stmt.where(Resource.type.in_(types))
     if state:
         stmt = stmt.where(Resource.state == state)
     if account:
@@ -93,7 +95,7 @@ def health(
     _: SessionData = Depends(tenant_access(Perm.resources_read)),
     db: Session = Depends(scoped_db),
 ):
-    instances = db.scalars(_base(tenant_id).where(Resource.type == "ec2_instance")).all()
+    instances = db.scalars(_base(tenant_id).where(Resource.type.in_(INSTANCE_TYPES))).all()
     events = db.scalars(
         select(HealthEvent)
         .where(HealthEvent.tenant_id == tenant_id, HealthEvent.status.in_(("open", "upcoming")))
@@ -115,9 +117,7 @@ def network(
     _: SessionData = Depends(tenant_access(Perm.resources_read)),
     db: Session = Depends(scoped_db),
 ):
-    rows = db.scalars(
-        _base(tenant_id).where(Resource.type.in_(("vpc", "subnet", "security_group", "ec2_instance")))
-    ).all()
+    rows = db.scalars(_base(tenant_id).where(Resource.type.in_((*NETWORK_TYPES, *INSTANCE_TYPES)))).all()
     vpcs = {}
     for r in rows:
         if r.type == "vpc":
@@ -132,7 +132,7 @@ def network(
         key = (r.cloud_account_id, r.region, r.vpc_id)
         if r.type == "subnet" and key in vpcs:
             vpcs[key].subnets.append(_out(r))
-        elif r.type == "ec2_instance" and key in vpcs:
+        elif r.type in INSTANCE_TYPES and key in vpcs:
             vpcs[key].instances += 1
             if r.public_ips and any(f["code"].startswith("sg_") for f in r.findings or []):
                 vpcs[key].exposed_instances.append(_out(r))
@@ -169,11 +169,14 @@ def request_action(
     user: SessionData = Depends(require_recent_mfa),
     db: Session = Depends(scoped_db),
 ):
-    """Reiniciar/ligar/desligar uma instância. Exige MFA recente, confirmação pelo nome e a tag
-    `cloudview-actions=enabled` no recurso (a role CloudViewOperator também só age com ela)."""
+    """Reiniciar/ligar/desligar uma instância EC2 ou VM do Azure. Exige MFA recente, confirmação pelo
+    nome e a tag `cloudview-actions=enabled` no recurso. Na AWS a role CloudViewOperator também só age
+    com a tag; no Azure, limite a role 'Cloud View Operator' aos grupos de recursos desejados."""
     r = _resource(db, tenant_id, resource_id)
-    if r.type != "ec2_instance":
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "ações disponíveis só para instâncias EC2")
+    if r.type not in INSTANCE_TYPES:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "ações disponíveis só para instâncias EC2 e VMs do Azure"
+        )
     if body.confirm.strip() not in {r.native_id, r.name or r.native_id}:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "confirmação não confere com o nome do recurso"

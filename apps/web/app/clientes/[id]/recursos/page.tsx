@@ -3,11 +3,11 @@
 import { useParams } from "next/navigation";
 import { Fragment, useEffect, useState } from "react";
 import Findings from "@/components/Findings";
-import { actionLabel, ago, api, can, errorText, typeLabel, type ActionReq, type Resource } from "@/lib/api";
+import { actionLabel, ago, api, can, errorText, INSTANCE_TYPES, typeLabel, type ActionReq, type Resource } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
 
 function healthPill(r: Resource) {
-  if (r.type !== "ec2_instance") return null;
+  if (!INSTANCE_TYPES.includes(r.type)) return null;
   const h = r.health ?? "unknown";
   const cls = h === "ok" ? "ok" : h === "impaired" ? "bad" : "todo";
   const label = { ok: "saudável", impaired: "com falha", initializing: "iniciando", unknown: "—" }[h] ?? h;
@@ -15,7 +15,8 @@ function healthPill(r: Resource) {
 }
 
 function ActionPanel({ tenantId, r, onDone }: { tenantId: string; r: Resource; onDone: () => void }) {
-  const [action, setAction] = useState(r.state === "stopped" ? "start" : "reboot");
+  const stopped = r.state === "stopped" || r.state === "deallocated";
+  const [action, setAction] = useState(stopped ? "start" : "reboot");
   const [confirm, setConfirm] = useState("");
   const [reason, setReason] = useState("");
   const [msg, setMsg] = useState("");
@@ -43,8 +44,8 @@ function ActionPanel({ tenantId, r, onDone }: { tenantId: string; r: Resource; o
   return (
     <form className="inline" onSubmit={submit}>
       <select aria-label="Ação" value={action} onChange={(e) => setAction(e.target.value)}>
-        {r.state === "running" && <><option value="reboot">Reiniciar</option><option value="stop">Desligar</option></>}
-        {r.state === "stopped" && <option value="start">Ligar</option>}
+        {r.state === "running" && <><option value="reboot">Reiniciar</option><option value="stop">{r.type === "vm" ? "Desligar (desalocar)" : "Desligar"}</option></>}
+        {stopped && <option value="start">Ligar</option>}
       </select>
       <input aria-label="Motivo" placeholder="motivo (opcional)" value={reason} onChange={(e) => setReason(e.target.value)} />
       <input aria-label="Confirmação" placeholder={`digite ${expected}`} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
@@ -57,7 +58,7 @@ function ActionPanel({ tenantId, r, onDone }: { tenantId: string; r: Resource; o
 export default function Recursos() {
   const { id } = useParams<{ id: string }>();
   const me = useMe();
-  const [type, setType] = useState("ec2_instance");
+  const [type, setType] = useState("ec2_instance,vm");
   const [q, setQ] = useState("");
   const [onlyFindings, setOnlyFindings] = useState(false);
   const [items, setItems] = useState<Resource[]>([]);
@@ -80,7 +81,7 @@ export default function Recursos() {
   }, [actions]);
 
   const canAct = can(me, id, "actions.execute");
-  const isInstance = type === "ec2_instance";
+  const isInstance = type.startsWith("ec2_instance");
 
   return (
     <div className="stack">
@@ -111,18 +112,18 @@ export default function Recursos() {
             {items.map((r) => (
               <Fragment key={r.id}>
                 <tr>
-                  <td><strong>{r.name || "—"}</strong><br /><span className="muted mono">{r.native_id}</span></td>
+                  <td><strong>{r.name || "—"}</strong><br /><span className="muted mono small" title={r.native_id}>{r.provider === "azure" ? `${String(r.attributes.resource_group ?? "")}` : r.native_id}</span></td>
                   {isInstance && (
                     <>
-                      <td className="mono">{r.instance_type}<br /><span className="muted">{r.vcpu ?? "?"} vCPU · {r.memory_mib ? (r.memory_mib / 1024).toFixed(1) : "?"} GiB · {r.platform}</span></td>
+                      <td className="mono">{r.instance_type}<br /><span className="muted">{r.provider === "azure" ? "Azure" : "AWS"} · {r.vcpu ?? "?"} vCPU · {r.memory_mib ? (r.memory_mib / 1024).toFixed(1) : "?"} GiB · {r.platform}</span></td>
                       <td>{r.state}</td>
                       <td>{healthPill(r)}</td>
                     </>
                   )}
                   <td className="mono small">
                     {r.private_ips.join(", ")}{r.public_ips.length ? <><br />pública {r.public_ips.join(", ")}</> : null}
-                    {r.vpc_id && <><br /><span className="muted">{r.vpc_id}{r.subnet_id ? ` / ${r.subnet_id}` : ""}</span></>}
-                    {r.type === "ebs_volume" && <span className="muted">{String(r.attributes.size_gib)} GiB {String(r.attributes.volume_type)}</span>}
+                    {r.vpc_id && <><br /><span className="muted">{r.vpc_id.split("/").pop()}{r.subnet_id ? ` / ${r.subnet_id.split("/").pop()}` : ""}</span></>}
+                    {(r.type === "ebs_volume" || r.type === "disk") && <span className="muted">{String(r.attributes.size_gib)} GiB {String(r.attributes.volume_type)}</span>}
                     {(r.type === "vpc" || r.type === "subnet") && <span className="muted">{String(r.attributes.cidr)}</span>}
                   </td>
                   <td className="mono small">{r.account_name || r.account_native_id}<br /><span className="muted">{r.region}</span></td>

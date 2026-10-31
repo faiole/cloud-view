@@ -15,6 +15,13 @@ const CODE_LABEL: Record<string, string> = {
   previous_generation: "Instâncias de geração antiga",
   imdsv1: "IMDSv1 habilitado",
   volume_unencrypted: "Volumes sem criptografia",
+  disk_unattached: "Discos sem uso (Azure)",
+  public_ip_unassociated: "IPs públicos sem uso (Azure)",
+  public_ip_basic_sku: "IP público com SKU Basic aposentado",
+  vm_stopped_not_deallocated: "VMs paradas sem desalocar",
+  ssm_unmanaged: "Sem agente SSM",
+  patches_missing_critical: "Atualizações críticas pendentes",
+  patches_missing_security: "Atualizações de segurança pendentes",
 };
 
 export default function Rede() {
@@ -39,7 +46,7 @@ export default function Rede() {
 
       {(n?.vpcs ?? []).map((v) => (
         <div className="card stack-sm" key={v.vpc.id}>
-          <h2>{v.vpc.name || v.vpc.native_id} <span className="muted small mono">{String(v.vpc.attributes.cidr)} · {v.vpc.account_native_id} · {v.vpc.region}{v.vpc.attributes.is_default ? " · padrão" : ""}</span></h2>
+          <h2>{v.vpc.name || v.vpc.native_id} <span className="pill todo">{v.vpc.provider === "azure" ? "VNet" : "VPC"}</span> <span className="muted small mono">{String(v.vpc.attributes.cidr)} · {v.vpc.account_name || v.vpc.account_native_id} · {v.vpc.region}{v.vpc.attributes.is_default ? " · padrão" : ""}</span></h2>
           <p className="muted">{v.instances} instâncias · {v.subnets.length} subnets</p>
           <div className="table-wrap">
             <table>
@@ -75,7 +82,7 @@ export default function Rede() {
               {n.open_security_groups.map((g) => (
                 <tr key={g.id}>
                   <td><strong>{g.name}</strong><br /><span className="muted mono">{g.native_id}</span></td>
-                  <td className="mono">{g.vpc_id}</td>
+                  <td className="mono">{g.vpc_id ? g.vpc_id.split("/").pop() : g.region}</td>
                   <td><Findings items={g.findings} /></td>
                 </tr>
               ))}

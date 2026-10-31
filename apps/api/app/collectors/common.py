@@ -12,6 +12,7 @@ class Ctx:
     hub: AwsHub
     storage: object | None = None
     vault: object | None = None
+    azure: object | None = None
 
 
 def now() -> datetime:

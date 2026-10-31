@@ -145,6 +145,17 @@ class Connection(Base):
     status: Mapped[str] = mapped_column(String(16), default="manual")  # manual | pending | ok | error
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Azure: app próprio do cliente (None = app hub da plataforma) e conta de cobrança para invoices
+    client_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    billing_account_id: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+    @property
+    def collectable(self) -> bool:
+        if self.provider == "aws":
+            return bool(self.role_arn)
+        if self.provider == "azure":
+            return self.kind == "azure_tenant" and self.status != "manual"
+        return False
 
     @property
     def is_organization(self) -> bool:
@@ -360,18 +371,18 @@ class Resource(Base):
     region: Mapped[str] = mapped_column(String(32))
     type: Mapped[str] = mapped_column(
         String(32)
-    )  # ec2_instance | ebs_volume | elastic_ip | vpc | subnet | security_group
-    native_id: Mapped[str] = mapped_column(String(128))
+    )  # ver app/resource_types.py (ec2_instance/vm, ebs_volume/disk, elastic_ip/public_ip, vpc, subnet, security_group)
+    native_id: Mapped[str] = mapped_column(String(400))
     name: Mapped[str | None] = mapped_column(String(300), nullable=True)
     state: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    instance_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    instance_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     vcpu: Mapped[int | None] = mapped_column(Integer, nullable=True)
     memory_mib: Mapped[int | None] = mapped_column(Integer, nullable=True)
     platform: Mapped[str | None] = mapped_column(String(64), nullable=True)
     private_ips: Mapped[list] = mapped_column(JSON, default=list)
     public_ips: Mapped[list] = mapped_column(JSON, default=list)
-    vpc_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    subnet_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    vpc_id: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    subnet_id: Mapped[str | None] = mapped_column(String(400), nullable=True)
     security_groups: Mapped[list] = mapped_column(JSON, default=list)
     tags: Mapped[dict] = mapped_column(JSONType, default=dict)
     attributes: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -400,7 +411,7 @@ class HealthEvent(Base):
     source: Mapped[str] = mapped_column(String(32))  # aws_health | ec2_scheduled | ec2_status
     native_id: Mapped[str] = mapped_column(String(400))
     service: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    region: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    region: Mapped[str | None] = mapped_column(String(64), nullable=True)
     category: Mapped[str | None] = mapped_column(
         String(32), nullable=True
     )  # issue | scheduledChange | accountNotification
@@ -418,7 +429,7 @@ class ActionRequest(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     tenant_id: Mapped[str] = mapped_column(String(36), index=True)
     resource_id: Mapped[str] = mapped_column(String(36))
-    resource_native_id: Mapped[str] = mapped_column(String(128))
+    resource_native_id: Mapped[str] = mapped_column(String(400))
     action: Mapped[str] = mapped_column(String(16))  # reboot | start | stop
     reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="queued")  # queued | running | succeeded | failed
@@ -447,7 +458,7 @@ class Recommendation(Base):
     native_id: Mapped[str] = mapped_column(String(300))
     action_type: Mapped[str] = mapped_column(String(40))  # Rightsize, Delete, MigrateToGraviton, ...
     resource_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    resource_native_id: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    resource_native_id: Mapped[str | None] = mapped_column(String(500), nullable=True)
     region: Mapped[str | None] = mapped_column(String(32), nullable=True)
     title: Mapped[str] = mapped_column(String(300))
     current: Mapped[str | None] = mapped_column(String(300), nullable=True)

@@ -14,7 +14,7 @@ export default function Saude() {
   const [instances, setInstances] = useState<Resource[]>([]);
   useEffect(() => {
     api<HealthSummary>(`/tenants/${id}/health`).then(setH);
-    api<Resource[]>(`/tenants/${id}/resources?type=ec2_instance`).then(setInstances);
+    api<Resource[]>(`/tenants/${id}/resources?type=ec2_instance,vm`).then(setInstances);
   }, [id]);
   type Patch = { managed?: boolean; critical?: number; security?: number; missing?: number; failed?: number; pending_reboot?: number; last_scan?: string };
   const patchOf = (r: Resource) => (r.attributes.patch ?? {}) as Patch;
@@ -52,7 +52,7 @@ export default function Saude() {
       )}
 
       <div className="card table-wrap">
-        <h2>Atualizações (SSM Patch Manager)</h2>
+        <h2>Atualizações (AWS SSM Patch Manager)</h2>
         <p className="muted">{managed.length} de {instances.length} instâncias gerenciadas pelo SSM · {pending.length} com atualizações críticas ou de segurança pendentes.</p>
         {managed.length > 0 && (
           <table>

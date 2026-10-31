@@ -109,7 +109,11 @@ class _Upserter:
         res = self.by_key.get(key)
         if res is None:
             res = Resource(
-                cloud_account_id=self.acc.id, provider="aws", region=region, type=rtype, native_id=native_id
+                cloud_account_id=self.acc.id,
+                provider=self.acc.provider,
+                region=region,
+                type=rtype,
+                native_id=native_id,
             )
             self.db.add(res)
             self.by_key[key] = res

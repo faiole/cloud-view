@@ -70,6 +70,14 @@ O Caddy emite o certificado HTTPS sozinho na primeira requisição.
    **Cost Anomaly Detection**. Para patches, as instâncias precisam do agente SSM e de uma
    *patch baseline*.
 
+## Conectar o Azure
+
+1. Registre um app **multi-tenant** no seu Entra ID e cadastre-o em *Conexões → Azure → App hub*
+   (certificado recomendado). Passo a passo em `onboarding/azure/README.md`.
+2. Para cada cliente: *Nova conexão Azure* com o ID do tenant, envie o link de consentimento ao
+   administrador dele e rode `onboarding/azure/grant-access.sh` no Cloud Shell do cliente.
+3. **Testar** → as subscriptions aparecem em *Contas de nuvem* para atribuir às empresas.
+
 ## Operação
 
 | Tarefa | Como |

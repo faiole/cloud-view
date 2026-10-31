@@ -209,6 +209,7 @@ export const kindLabel: Record<string, string> = {
 export type Finding = { code: string; severity: "critical" | "warning" | "info"; message: string };
 export type Resource = {
   id: string;
+  provider: string;
   account_native_id: string;
   account_name: string | null;
   region: string;
@@ -278,7 +279,11 @@ export type ConnectionDetail = {
   last_error: string | null;
   last_sync_at: string | null;
   accounts: number;
+  provider: string;
+  client_id: string | null;
+  billing_account_id: string | null;
 };
+export type AzureHubStatus = { configured: boolean; client_id: string | null; home_tenant_id: string | null; auth: string | null; updated_at: string | null };
 export type Job = {
   id: string;
   kind: string;
@@ -292,14 +297,16 @@ export type Job = {
 export type HubStatus = { mode: "default" | "vault"; principal_arn: string | null; access_key_hint: string | null; updated_at: string | null };
 
 export const actionLabel: Record<string, string> = { reboot: "Reiniciar", start: "Ligar", stop: "Desligar" };
+// Grupos de tipos equivalentes entre nuvens (AWS, Azure)
 export const typeLabel: Record<string, string> = {
-  ec2_instance: "Instâncias",
-  ebs_volume: "Volumes",
-  elastic_ip: "IPs elásticos",
-  vpc: "VPCs",
+  "ec2_instance,vm": "Instâncias e VMs",
+  "ebs_volume,disk": "Volumes e discos",
+  "elastic_ip,public_ip": "IPs públicos",
+  vpc: "VPCs e VNets",
   subnet: "Subnets",
-  security_group: "Security groups",
+  security_group: "Security groups e NSGs",
 };
+export const INSTANCE_TYPES = ["ec2_instance", "vm"];
 
 export function ago(iso: string | null): string {
   if (!iso) return "nunca";

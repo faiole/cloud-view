@@ -19,6 +19,23 @@ INTERVALS = {
     "evaluate": timedelta(minutes=30),
 }
 CONNECTION_KINDS = ("discover", "costs", "invoices", "aws_health", "optimization")
+
+
+def connection_kinds(conn: Connection) -> list[str]:
+    kinds = []
+    for kind in CONNECTION_KINDS:
+        if kind == "costs" and conn.cost_source == "manual":
+            continue
+        if kind == "invoices" and (
+            not conn.collect_invoices or (conn.provider == "azure" and not conn.billing_account_id)
+        ):
+            continue
+        if kind == "aws_health" and conn.provider != "aws":
+            continue  # no Azure o Service Health vem junto com a saúde de cada subscription
+        kinds.append(kind)
+    return kinds
+
+
 ACCOUNT_KINDS = ("inventory", "health")
 
 
@@ -42,17 +59,15 @@ def tick(db: Session, at: datetime | None = None) -> list[str]:
     created = []
     if _due(last, "evaluate::", "evaluate", at) and enqueue(db, "evaluate"):
         created.append("evaluate")
-    conns = db.scalars(
-        select(Connection).where(Connection.provider == "aws", Connection.role_arn.is_not(None))
-    ).all()
+    conns = [
+        c
+        for c in db.scalars(select(Connection).where(Connection.provider.in_(("aws", "azure"))))
+        if c.collectable
+    ]
     for conn in conns:
         if conn.status == "error" and _due(last, f"discover:{conn.id}:", "discover", at) is False:
             continue  # conexão quebrada: só tenta de novo no próximo ciclo de descoberta
-        for kind in CONNECTION_KINDS:
-            if kind == "costs" and conn.cost_source == "manual":
-                continue
-            if kind == "invoices" and not conn.collect_invoices:
-                continue
+        for kind in connection_kinds(conn):
             if _due(last, f"{kind}:{conn.id}:", kind, at) and enqueue(db, kind, connection_id=conn.id):
                 created.append(f"{kind}:{conn.name}")
         if conn.status != "ok":

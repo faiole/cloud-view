@@ -1,7 +1,8 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import { ago, api, errorText, type ConnectionDetail, type HubStatus, type Job } from "@/lib/api";
+import { AzureHub, AzureOnboarding, NewAzureConnection } from "@/components/AzureConnections";
+import { ago, api, errorText, type AzureHubStatus, type ConnectionDetail, type HubStatus, type Job } from "@/lib/api";
 
 const STATUS: Record<string, [string, string]> = {
   ok: ["ok", "funcionando"],
@@ -89,6 +90,8 @@ function Onboarding({ c, principal }: { c: ConnectionDetail; principal: string |
 export default function Conexoes() {
   const [conns, setConns] = useState<ConnectionDetail[]>([]);
   const [hub, setHub] = useState<HubStatus | null>(null);
+  const [azHub, setAzHub] = useState<AzureHubStatus | null>(null);
+  const [cloud, setCloud] = useState<"aws" | "azure">("aws");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
@@ -97,6 +100,7 @@ export default function Conexoes() {
   const load = () => {
     api<ConnectionDetail[]>("/admin/connections").then(setConns);
     api<HubStatus>("/admin/aws/hub").then(setHub);
+    api<AzureHubStatus>("/admin/azure/hub").then(setAzHub);
     api<Job[]>("/admin/jobs?limit=40").then(setJobs);
   };
   useEffect(() => { load(); }, []);
@@ -142,12 +146,19 @@ export default function Conexoes() {
     <div className="stack">
       <div>
         <h1>Conexões</h1>
-        <p className="sub">Contas AWS e Organizations de onde o painel coleta custos, invoices, inventário, rede e saúde automaticamente.</p>
+        <p className="sub">Contas AWS, Organizations e tenants Azure de onde o painel coleta custos, invoices, inventário, rede e saúde automaticamente.</p>
       </div>
 
-      <Hub hub={hub} reload={load} />
+      <nav className="tabs" aria-label="Nuvem">
+        <a href="#aws" className={cloud === "aws" ? "active" : ""} onClick={(e) => { e.preventDefault(); setCloud("aws"); }}>AWS</a>
+        <a href="#azure" className={cloud === "azure" ? "active" : ""} onClick={(e) => { e.preventDefault(); setCloud("azure"); }}>Azure</a>
+      </nav>
 
-      <form className="card inline" onSubmit={create}>
+      {cloud === "aws" && <Hub hub={hub} reload={load} />}
+      {cloud === "azure" && <AzureHub hub={azHub} reload={load} />}
+      {cloud === "azure" && <NewAzureConnection onCreated={(c) => { setOpen(c.id); setMsg("Conexão criada. Siga os passos abaixo e clique em Testar."); load(); }} />}
+
+      {cloud === "aws" && <form className="card inline" onSubmit={create}>
         <label>Nome<input id="c-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="Organização AB" /></label>
         <label>Tipo
           <select id="c-kind" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
@@ -169,7 +180,8 @@ export default function Conexoes() {
         <label>Regiões<input id="c-regions" value={form.regions} onChange={(e) => setForm({ ...form, regions: e.target.value })} placeholder="todas (ou sa-east-1, us-east-1)" /></label>
         <button type="submit">Adicionar conexão</button>
         {msg && <span className="note">{msg}</span>}
-      </form>
+      </form>}
+      {cloud === "azure" && msg && <span className="note">{msg}</span>}
 
       <div className="card table-wrap">
         <table>
@@ -180,13 +192,13 @@ export default function Conexoes() {
               return (
                 <Fragment key={c.id}>
                   <tr>
-                    <td><strong>{c.name}</strong><br /><span className="muted mono">{c.kind === "aws_organization" ? "Organization" : "conta"} {c.native_id}</span></td>
+                    <td><strong>{c.name}</strong><br /><span className="muted mono">{{ aws_organization: "AWS Organization", aws_account: "Conta AWS", azure_tenant: "Tenant Azure" }[c.kind] ?? c.kind} {c.native_id}</span></td>
                     <td className="num">{c.accounts}</td>
-                    <td>{{ cost_explorer: "Cost Explorer", focus_s3: "FOCUS (S3)", manual: "importação" }[c.cost_source]}</td>
+                    <td>{{ cost_explorer: "Cost Explorer", focus_s3: "FOCUS (S3)", azure_cost_management: "Cost Management", focus_blob: "FOCUS (Blob)", manual: "importação" }[c.cost_source] ?? c.cost_source}</td>
                     <td><span className={`pill ${cls}`}>{label}</span>{c.last_error && <><br /><span className="error small">{c.last_error}</span></>}</td>
                     <td>{ago(c.last_sync_at)}</td>
                     <td className="actions">
-                      {c.role_arn && <>
+                      {(c.role_arn || (c.provider === "azure" && c.status !== "manual")) && <>
                         <button className="ghost" onClick={() => setOpen(open === c.id ? null : c.id)}>{open === c.id ? "Fechar" : "Como conectar"}</button>
                         <button className="ghost" onClick={() => run(c, "test")}>Testar</button>
                         <button onClick={() => run(c, "sync")} disabled={c.status !== "ok"}>Sincronizar agora</button>
@@ -194,6 +206,7 @@ export default function Conexoes() {
                     </td>
                   </tr>
                   {open === c.id && c.role_arn && <tr><td colSpan={6}><Onboarding c={c} principal={hub?.principal_arn ?? null} /></td></tr>}
+                  {open === c.id && c.provider === "azure" && <tr><td colSpan={6}><AzureOnboarding c={c} hub={azHub} /></td></tr>}
                 </Fragment>
               );
             })}

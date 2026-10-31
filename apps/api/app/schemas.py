@@ -255,10 +255,16 @@ class ConnectionCreate(BaseModel):
 
 class ConnectionUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
-    cost_source: str | None = Field(default=None, pattern=r"^(cost_explorer|focus_s3|manual)$")
-    focus_s3_uri: str | None = Field(default=None, pattern=r"^s3://[a-z0-9.\-]{3,63}(/.*)?$")
+    cost_source: str | None = Field(
+        default=None, pattern=r"^(cost_explorer|focus_s3|azure_cost_management|focus_blob|manual)$"
+    )
+    focus_s3_uri: str | None = Field(
+        default=None,
+        pattern=r"^(s3://[a-z0-9.\-]{3,63}(/.*)?|https://[a-z0-9]{3,24}\.blob\.core\.windows\.net/.+)$",
+    )
     regions: list[str] | None = None
     collect_invoices: bool | None = None
+    billing_account_id: str | None = Field(default=None, max_length=300)
 
 
 class ConnectionDetail(BaseModel):
@@ -280,7 +286,52 @@ class ConnectionDetail(BaseModel):
     status: str
     last_error: str | None
     last_sync_at: datetime | None
+    client_id: str | None = None
+    billing_account_id: str | None = None
     accounts: int = 0
+
+
+GUID = r"^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$"
+
+
+class AzureAppCredential(BaseModel):
+    client_id: str = Field(pattern=GUID)
+    client_secret: str | None = Field(default=None, min_length=10, max_length=200)
+    certificate_pem: str | None = Field(default=None, max_length=20000)
+    private_key_pem: str | None = Field(default=None, max_length=20000)
+
+    @field_validator("private_key_pem")
+    @classmethod
+    def _pair(cls, v, info):
+        if bool(v) != bool(info.data.get("certificate_pem")):
+            raise ValueError("certificado e chave privada vêm juntos")
+        return v
+
+
+class AzureConnectionCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    tenant_id: str = Field(pattern=GUID, description="ID do tenant (diretório) do cliente no Entra ID")
+    cost_source: str = Field(
+        default="azure_cost_management", pattern=r"^(azure_cost_management|focus_blob|manual)$"
+    )
+    focus_uri: str | None = Field(
+        default=None, pattern=r"^https://[a-z0-9]{3,24}\.blob\.core\.windows\.net/.+$"
+    )
+    billing_account_id: str | None = Field(default=None, max_length=300)
+    collect_invoices: bool = True
+    own_app: AzureAppCredential | None = None
+
+
+class AzureHubIn(AzureAppCredential):
+    home_tenant_id: str = Field(pattern=GUID, description="tenant onde o app multi-tenant foi registrado")
+
+
+class AzureHubStatus(BaseModel):
+    configured: bool
+    client_id: str | None
+    home_tenant_id: str | None
+    auth: str | None  # certificate | secret
+    updated_at: datetime | None
 
 
 class HubCredentialsIn(BaseModel):

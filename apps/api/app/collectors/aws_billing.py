@@ -177,11 +177,13 @@ def exclusive_owner(db: Session, conn: Connection, period: date) -> str | None:
     terceiros.
     """
     _, last = monthrange(period.year, period.month)
+    # Todas as contas da conexão (Organization/pagadora ou tenant Azure) no mês
     owners = db.execute(
         select(CostLine.tenant_id, func.count())
+        .join(CloudAccount, CloudAccount.id == CostLine.cloud_account_id)
         .where(
-            CostLine.provider == "aws",
-            CostLine.billing_account_id == conn.native_id,
+            CostLine.provider == conn.provider,
+            CloudAccount.connection_id == conn.id,
             CostLine.charge_date >= period,
             CostLine.charge_date <= period.replace(day=last),
         )

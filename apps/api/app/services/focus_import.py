@@ -120,11 +120,15 @@ def ingest_rows(
     user_email: str | None,
     source: str = "focus_csv",
     replace_range: tuple[date, date] | None = None,
+    connection: Connection | None = None,
 ) -> ImportResult:
     """Agrega linhas no layout FOCUS e grava, substituindo o período já existente das mesmas pagadoras.
 
     `replace_range` força o intervalo substituído (ex.: mês inteiro consultado no Cost Explorer,
     mesmo que alguns dias ainda não tenham custo).
+
+    `connection`: coleta automática de uma conexão conhecida. As contas ficam ligadas a ela (e não a
+    uma conexão criada a partir do BillingAccountId do arquivo, que no Azure é a conta de cobrança).
     """
     agg: dict[tuple, list[Decimal]] = defaultdict(lambda: [Decimal(0), Decimal(0)])
     accounts: dict[tuple[str, str], tuple[str | None, str, str | None]] = {}
@@ -180,6 +184,9 @@ def ingest_rows(
     # Conexões (pagadoras / Organizations) e contas descobertas
     conn_ids: dict[tuple[str, str], str] = {}
     for (prov, bid), bname in billing.items():
+        if connection is not None:
+            conn_ids[(prov, bid)] = connection.id
+            continue
         conn = db.scalar(select(Connection).where(Connection.provider == prov, Connection.native_id == bid))
         if conn is None:
             kind = {"aws": "aws_organization", "azure": "azure_billing_account", "oci": "oci_tenancy"}[prov]

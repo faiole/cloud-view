@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.aws.session import AwsHub
-from app.collectors import aws_actions, aws_billing, aws_inventory, aws_optimization
+from app.collectors import aws_actions, aws_billing, aws_inventory, aws_optimization, azure
 from app.collectors.common import Ctx, error_text
 from app.core.db import apply_tenant_scope, get_sessionmaker
 from app.models import ActionRequest, CloudAccount, Connection, Job
@@ -30,6 +30,29 @@ log = logging.getLogger("cloudview.worker")
 HUB_REFRESH = 300
 
 
+def _handle_azure(db: Session, ctx: Ctx, job: Job, conn: Connection, acc: CloudAccount | None) -> dict:
+    if job.kind == "discover":
+        return azure.discover(db, ctx, conn)
+    if job.kind == "costs":
+        out = azure.collect_costs(db, ctx, conn)
+        jobs.enqueue(db, "evaluate")
+        return out
+    if job.kind == "optimization":
+        return azure.collect_optimization(db, ctx, conn)
+    if job.kind == "invoices":
+        return azure.collect_invoices(db, ctx, conn)
+    if acc is None:
+        raise ValueError("subscription removida")
+    if job.kind == "inventory":
+        out = azure.collect_inventory(db, ctx, conn, acc)
+        reallocate_resources(db, acc.id)
+        out.update(sync_rule_recommendations(db, acc))
+        return out
+    if job.kind == "health":
+        return azure.collect_health(db, ctx, conn, acc)
+    raise ValueError(f"tipo de job desconhecido para Azure: {job.kind}")
+
+
 def handle(db: Session, ctx: Ctx, job: Job) -> dict:
     conn = db.get(Connection, job.connection_id) if job.connection_id else None
     acc = db.get(CloudAccount, job.cloud_account_id) if job.cloud_account_id else None
@@ -42,6 +65,8 @@ def handle(db: Session, ctx: Ctx, job: Job) -> dict:
         return notifications.process(db, ctx.vault, job.payload)
     if conn is None:
         raise ValueError("conexão removida")
+    if conn.provider == "azure":
+        return _handle_azure(db, ctx, job, conn, acc)
     if job.kind == "discover":
         try:
             return aws_inventory.discover_accounts(db, ctx, conn)
