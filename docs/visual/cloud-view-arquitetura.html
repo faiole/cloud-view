@@ -1,0 +1,454 @@
+<title>Cloud View</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: uma coluna de leitura (~1040px) com seções de engenharia; diagrama em SVG rolável no celular */
+:root {
+  --bg: #f2f5f4;
+  --surface: #ffffff;
+  --ink: #13201e;
+  --muted: #586966;
+  --line: #d3dcd9;
+  --line-strong: #8fa19d;
+  --accent: #0b746f;
+  --accent-soft: #dcefec;
+  --push: #a8541f;
+  --ok: #1d7a46;
+  --ok-soft: #dff1e6;
+  --zone: #e8eeec;
+  --font-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1615; --surface: #142120; --ink: #e1ebe9; --muted: #93a7a3; --line: #263735; --line-strong: #5d7470;
+    --accent: #3dbdb3; --accent-soft: #163634; --push: #e48a52; --ok: #5ccf8d; --ok-soft: #173327; --zone: #111d1c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1615; --surface: #142120; --ink: #e1ebe9; --muted: #93a7a3; --line: #263735; --line-strong: #5d7470;
+  --accent: #3dbdb3; --accent-soft: #163634; --push: #e48a52; --ok: #5ccf8d; --ok-soft: #173327; --zone: #111d1c;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 64px;
+}
+.wrap { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 56px; }
+h1, h2, h3 { font-family: var(--font-display); font-stretch: 112%; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(34px, 6vw, 56px); font-weight: 800; letter-spacing: -0.01em; line-height: 1.02; }
+h2 { font-size: 24px; font-weight: 800; }
+h3 { font-size: 16px; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+code, .mono { font-family: var(--font-mono); font-size: 0.86em; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.muted { color: var(--muted); }
+section { display: flex; flex-direction: column; gap: 20px; }
+.section-head { display: flex; flex-direction: column; gap: 6px; }
+
+/* Cabeçalho */
+header { display: grid; gap: 24px; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: end; }
+header .lede { font-size: 18px; color: var(--muted); margin-top: 16px; }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.fact { background: var(--surface); padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
+.fact b { font-family: var(--font-display); font-stretch: 112%; font-size: 22px; font-variant-numeric: tabular-nums; }
+.fact span { font-size: 12.5px; color: var(--muted); }
+
+/* Diagrama */
+.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; overflow-x: auto; }
+.diagram svg { display: block; min-width: 860px; width: 100%; height: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 26px; height: 0; border-top: 2px solid var(--line-strong); vertical-align: middle; margin-right: 6px; }
+.legend i.push { border-top: 2px dashed var(--push); }
+.legend i.cred { border-top-color: var(--accent); }
+svg .zone { fill: var(--zone); stroke: var(--line-strong); stroke-dasharray: 4 4; }
+svg .zone-label { fill: var(--muted); font: 500 11px var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; }
+svg .box { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1.2; }
+svg .box.key { stroke: var(--accent); stroke-width: 1.8; }
+svg .t { fill: var(--ink); font: 600 13px var(--font-body); }
+svg .s { fill: var(--muted); font: 400 11px var(--font-body); }
+svg .edge { fill: none; stroke: var(--line-strong); stroke-width: 1.5; }
+svg .edge.cred { stroke: var(--accent); }
+svg .edge.push { stroke: var(--push); stroke-dasharray: 5 4; }
+svg .ah { fill: var(--line-strong); }
+svg .ah.cred { fill: var(--accent); }
+svg .ah.push { fill: var(--push); }
+svg .lbl { fill: var(--muted); font: 500 10.5px var(--font-mono); }
+svg .lbl.push { fill: var(--push); }
+
+/* Blocos */
+.cols { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.panel p { font-size: 14px; color: var(--muted); }
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font-family: var(--font-mono); font-weight: 500; font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--bg); }
+td:first-child { font-weight: 600; white-space: nowrap; }
+td.freq { font-family: var(--font-mono); font-size: 12.5px; white-space: nowrap; color: var(--accent); }
+
+/* Fluxo de login */
+.flow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.step { padding: 16px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.step:last-child { border-right: 0; }
+.step .n { font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
+.step p { font-size: 13.5px; color: var(--muted); }
+.step.hl { background: var(--accent-soft); }
+
+.cred-grid { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cred-grid .panel .how { font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
+.rules { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; }
+.rules li { padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
+.rules li b { display: block; font-weight: 600; margin-bottom: 2px; }
+.rules li span { color: var(--muted); font-size: 13.5px; }
+
+/* Roadmap */
+.roadmap { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.phase { display: grid; grid-template-columns: 112px minmax(0, 1fr) 120px; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--line); align-items: start; }
+.phase:last-child { border-bottom: 0; }
+.phase .tag { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); }
+.phase .what { font-size: 14px; }
+.phase .what b { display: block; }
+.phase .when { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); text-align: right; }
+.phase.done { background: var(--ok-soft); }
+.phase.done .tag, .phase.done .when { color: var(--ok); }
+.pill { display: inline-block; font-family: var(--font-mono); font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
+.delivered { columns: 2; column-gap: 28px; margin: 8px 0 0; padding-left: 18px; font-size: 13.5px; color: var(--muted); }
+.delivered li { break-inside: avoid; margin-bottom: 4px; }
+
+.cost { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 16px; align-items: stretch; }
+.bars { display: flex; flex-direction: column; gap: 10px; }
+.bar { display: grid; grid-template-columns: 150px minmax(0, 1fr) 64px; gap: 10px; align-items: center; font-size: 13.5px; }
+.bar .track { height: 10px; background: var(--bg); border-radius: 5px; overflow: hidden; }
+.bar .fill { height: 100%; background: var(--accent); border-radius: 5px; }
+.bar .v { font-family: var(--font-mono); font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums; }
+.big { font-family: var(--font-display); font-stretch: 112%; font-weight: 800; font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums; }
+
+footer { border-top: 1px solid var(--line); padding-top: 20px; display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 13.5px; color: var(--muted); }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 860px) {
+  header, .cost { grid-template-columns: 1fr; }
+  .cols, .cred-grid { grid-template-columns: 1fr; }
+  .flow { grid-template-columns: 1fr; }
+  .step { border-right: 0; border-bottom: 1px solid var(--line); }
+  .step:last-child { border-bottom: 0; }
+  .rules { grid-template-columns: 1fr; }
+  .delivered { columns: 1; }
+  .phase { grid-template-columns: 1fr; gap: 4px; }
+  .phase .when { text-align: left; }
+  .bar { grid-template-columns: 110px minmax(0, 1fr) 56px; }
+}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div>
+    <div class="eyebrow">Arquitetura · proposta técnica</div>
+    <h1>Cloud View</h1>
+    <p class="lede">Um painel para acompanhar custos, saúde, rede e otimização de várias contas AWS, Azure e OCI, separadas por cliente, com ações rápidas e login protegido por MFA.</p>
+  </div>
+  <div class="facts" aria-label="Resumo">
+    <div class="fact"><b>3 nuvens</b><span>AWS (contas e Organizations), Azure, OCI</span></div>
+    <div class="fact"><b>&lt; 200 ms</b><span>meta de resposta do painel</span></div>
+    <div class="fact"><b>0 chaves AWS</b><span>acesso por AssumeRole + ExternalId</span></div>
+    <div class="fact"><b>Fase 0</b><span>fundação entregue no repositório</span></div>
+  </div>
+</header>
+
+<section>
+  <div class="section-head">
+    <div class="eyebrow">Visão geral</div>
+    <h2>Como as peças se conectam</h2>
+    <p class="muted">O painel nunca consulta as nuvens na hora em que alguém abre a tela. Workers coletam em segundo plano, gravam no Postgres e o painel lê de lá. Eventos importantes chegam empurrados pelas próprias nuvens.</p>
+  </div>
+  <div class="diagram">
+    <svg viewBox="0 0 1000 480" role="img" aria-labelledby="dg-title">
+      <title id="dg-title">Diagrama: usuário passa por WAF e ALB até o painel, a API e o Keycloak; a API usa Postgres, Redis e filas SQS; workers leem segredos no Secrets Manager e acessam as contas AWS, Azure e OCI dos clientes, que devolvem eventos para a fila.</title>
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0 L10 5 L0 10 z"/></marker>
+        <marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah cred" d="M0 0 L10 5 L0 10 z"/></marker>
+        <marker id="ahp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah push" d="M0 0 L10 5 L0 10 z"/></marker>
+      </defs>
+
+      <rect class="zone" x="155" y="24" width="580" height="440" rx="10"/>
+      <text class="zone-label" x="171" y="44">Conta hub AWS · ECS Fargate</text>
+      <rect class="zone" x="785" y="160" width="200" height="270" rx="10"/>
+      <text class="zone-label" x="801" y="450">Contas dos clientes</text>
+
+      <!-- Usuário e borda -->
+      <rect class="box" x="16" y="190" width="116" height="72" rx="8"/>
+      <text class="t" x="28" y="218">Equipe / cliente</text>
+      <text class="s" x="28" y="236">navegador</text>
+      <text class="s" x="28" y="251">senha + TOTP</text>
+
+      <rect class="box" x="172" y="170" width="132" height="112" rx="8"/>
+      <text class="t" x="184" y="198">WAF + ALB</text>
+      <text class="s" x="184" y="216">TLS 1.2+/1.3</text>
+      <text class="s" x="184" y="231">limite por IP no login</text>
+      <text class="s" x="184" y="246">allowlist opcional</text>
+      <text class="s" x="184" y="261">admin Keycloak bloqueado</text>
+
+      <!-- Aplicação -->
+      <rect class="box" x="352" y="60" width="150" height="56" rx="8"/>
+      <text class="t" x="364" y="84">Painel</text>
+      <text class="s" x="364" y="101">Next.js</text>
+
+      <rect class="box key" x="352" y="178" width="150" height="86" rx="8"/>
+      <text class="t" x="364" y="202">API / BFF</text>
+      <text class="s" x="364" y="219">FastAPI · sessão no servidor</text>
+      <text class="s" x="364" y="234">papéis por cliente</text>
+      <text class="s" x="364" y="249">step-up MFA · auditoria</text>
+
+      <rect class="box key" x="352" y="320" width="150" height="56" rx="8"/>
+      <text class="t" x="364" y="344">Keycloak</text>
+      <text class="s" x="364" y="361">MFA obrigatório</text>
+
+      <!-- Dados e filas -->
+      <rect class="box" x="562" y="44" width="152" height="56" rx="8"/>
+      <text class="t" x="574" y="68">PostgreSQL</text>
+      <text class="s" x="574" y="85">isolamento por cliente (RLS)</text>
+
+      <rect class="box" x="562" y="122" width="152" height="52" rx="8"/>
+      <text class="t" x="574" y="144">Redis</text>
+      <text class="s" x="574" y="161">sessões e cache</text>
+
+      <rect class="box" x="562" y="200" width="152" height="52" rx="8"/>
+      <text class="t" x="574" y="222">Filas SQS</text>
+      <text class="s" x="574" y="239">coleta · ações · eventos</text>
+
+      <rect class="box" x="562" y="288" width="152" height="72" rx="8"/>
+      <text class="t" x="574" y="312">Workers</text>
+      <text class="s" x="574" y="329">coleta (somente leitura)</text>
+      <text class="s" x="574" y="344">ações (role separada)</text>
+
+      <rect class="box key" x="562" y="392" width="152" height="56" rx="8"/>
+      <text class="t" x="574" y="416">Secrets Manager</text>
+      <text class="s" x="574" y="433">+ chave KMS exclusiva</text>
+
+      <!-- Nuvens -->
+      <rect class="box" x="802" y="176" width="168" height="62" rx="8"/>
+      <text class="t" x="814" y="200">AWS</text>
+      <text class="s" x="814" y="217">contas e Organizations</text>
+      <text class="s" x="814" y="231">AssumeRole + ExternalId</text>
+
+      <rect class="box" x="802" y="260" width="168" height="62" rx="8"/>
+      <text class="t" x="814" y="284">Azure</text>
+      <text class="s" x="814" y="301">tenants e subscriptions</text>
+      <text class="s" x="814" y="315">federação OIDC · Reader</text>
+
+      <rect class="box" x="802" y="344" width="168" height="62" rx="8"/>
+      <text class="t" x="814" y="368">OCI</text>
+      <text class="s" x="814" y="385">tenancies e compartments</text>
+      <text class="s" x="814" y="399">API key guardada no cofre</text>
+
+      <!-- Arestas -->
+      <path class="edge" d="M132 226 L170 226" marker-end="url(#ah)"/>
+      <path class="edge" d="M304 200 L328 200 L328 88 L350 88" marker-end="url(#ah)"/>
+      <path class="edge" d="M304 226 L350 226" marker-end="url(#ah)"/>
+      <path class="edge" d="M304 252 L328 252 L328 348 L350 348" marker-end="url(#ah)"/>
+      <path class="edge" d="M427 264 L427 318" marker-end="url(#ah)"/>
+      <text class="lbl" x="434" y="296">OIDC + PKCE</text>
+      <path class="edge" d="M502 196 L532 196 L532 72 L560 72" marker-end="url(#ah)"/>
+      <path class="edge" d="M502 212 L544 212 L544 148 L560 148" marker-end="url(#ah)"/>
+      <path class="edge" d="M502 230 L560 230" marker-end="url(#ah)"/>
+      <path class="edge" d="M638 252 L638 286" marker-end="url(#ah)"/>
+      <path class="edge cred" d="M638 360 L638 390" marker-end="url(#ahc)"/>
+      <path class="edge cred" d="M714 324 L752 324 L752 207 L800 207" marker-end="url(#ahc)"/>
+      <path class="edge cred" d="M752 291 L800 291" marker-end="url(#ahc)"/>
+      <path class="edge cred" d="M752 324 L752 375 L800 375" marker-end="url(#ahc)"/>
+      <path class="edge push" d="M886 176 L886 140 L728 140 L728 222 L716 222" marker-end="url(#ahp)"/>
+      <text class="lbl push" x="746" y="132">eventos push</text>
+    </svg>
+  </div>
+  <div class="legend">
+    <span><i></i>chamada interna</span>
+    <span><i class="cred"></i>acesso às nuvens com credencial temporária</span>
+    <span><i class="push"></i>eventos enviados pelas nuvens (EventBridge, Event Grid, OCI Events)</span>
+  </div>
+</section>
+
+<section>
+  <div class="section-head">
+    <div class="eyebrow">Velocidade</div>
+    <h2>Por que o painel abre rápido</h2>
+  </div>
+  <div class="cols">
+    <div class="panel"><h3>Dados já prontos</h3><p>A tela lê snapshots do Postgres e KPIs do Redis. Nenhuma chamada às APIs das nuvens no caminho da página.</p></div>
+    <div class="panel"><h3>Coleta paralela</h3><p>Uma fila por conta, região e assunto. Uma conta lenta ou com erro não atrasa as outras; falhas vão para uma fila de erro com alerta.</p></div>
+    <div class="panel"><h3>Eventos em tempo real</h3><p>Mudança de estado de instância e avisos de saúde chegam por push em segundos, sem esperar o próximo ciclo.</p></div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Assunto</th><th>AWS</th><th>Azure</th><th>OCI</th><th>Atualização</th></tr></thead>
+      <tbody>
+        <tr><td>Inventário e modelo</td><td>EC2, RDS, ECS, Resource Explorer</td><td>Resource Graph</td><td>Search Service</td><td class="freq">15 min + eventos</td></tr>
+        <tr><td>Rede</td><td>VPC, SG, ENI, EIP, NAT, ELB, TGW</td><td>VNet, NSG, IP público, LB</td><td>VCN, NSG, LB, DRG</td><td class="freq">1 h</td></tr>
+        <tr><td>Saúde das instâncias</td><td>Status checks, CloudWatch</td><td>Resource Health, Monitor</td><td>Monitoring</td><td class="freq">5 min</td></tr>
+        <tr><td>Saúde dos serviços</td><td>AWS Health (organização)</td><td>Service Health</td><td>Announcements</td><td class="freq">5 min + push</td></tr>
+        <tr><td>Custos e pagamento</td><td>Cost Explorer, CUR 2.0, faturas</td><td>Cost Management, faturas</td><td>Usage API, faturas</td><td class="freq">6–12 h</td></tr>
+        <tr><td>Otimização</td><td>Cost Optimization Hub, Compute Optimizer</td><td>Advisor</td><td>Cloud Advisor</td><td class="freq">diária</td></tr>
+        <tr><td>Atualizações</td><td>SSM Patch Manager</td><td>Update Manager</td><td>OS Management Hub</td><td class="freq">diária</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted">O Cost Explorer cobra US$ 0,01 por chamada, por isso custos ficam em cache e são atualizados poucas vezes ao dia.</p>
+</section>
+
+<section>
+  <div class="section-head">
+    <div class="eyebrow">Acesso ao painel</div>
+    <h2>Login com senha e MFA</h2>
+    <p class="muted">O Keycloak cuida da senha e do segundo fator. A API guarda os tokens no servidor; o navegador recebe só um cookie que não pode ser lido por scripts.</p>
+  </div>
+  <div class="flow">
+    <div class="step"><span class="n">1 · senha</span><h3>Usuário e senha</h3><p>12+ caracteres, histórico de 5, bloqueio após 5 erros.</p></div>
+    <div class="step"><span class="n">2 · código</span><h3>TOTP obrigatório</h3><p>Google ou Microsoft Authenticator. Sem cadastro, o primeiro login obriga a cadastrar.</p></div>
+    <div class="step"><span class="n">3 · sessão</span><h3>Cookie HttpOnly</h3><p>Expira após 15 min parado e no máximo em 8 h. Proteção contra CSRF.</p></div>
+    <div class="step"><span class="n">4 · papéis</span><h3>Acesso por cliente</h3><p>Admin, operador, leitura ou portal do cliente. Retirar um acesso vale na hora.</p></div>
+    <div class="step hl"><span class="n">5 · step-up</span><h3>Código de novo</h3><p>Reiniciar, apagar ou mudar acessos pede senha e código se o último MFA passou de 5 min.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head">
+    <div class="eyebrow">Credenciais das nuvens</div>
+    <h2>Chaves guardadas com segurança</h2>
+    <p class="muted">Sempre que possível, nenhum segredo é guardado. Quando há segredo, ele vai para o Secrets Manager e o banco guarda só a referência.</p>
+  </div>
+  <div class="cred-grid">
+    <div class="panel">
+      <h3>AWS</h3>
+      <span class="how">sem chave de acesso</span>
+      <p>Uma role em cada conta, criada por CloudFormation de 1 clique. Em Organizations, um StackSet cobre contas novas sozinho. ExternalId único por cliente.</p>
+    </div>
+    <div class="panel">
+      <h3>Azure</h3>
+      <span class="how">sem segredo (federação)</span>
+      <p>App multi-tenant com <code>Reader</code> e <code>Cost Management Reader</code>. Autentica por federação OIDC; certificado no cofre como alternativa.</p>
+    </div>
+    <div class="panel">
+      <h3>OCI</h3>
+      <span class="how">chave gerada pela plataforma</span>
+      <p>O par de chaves nasce no painel. O cliente cola só a chave pública no console OCI; a privada vai direto para o cofre e não aparece de novo.</p>
+    </div>
+  </div>
+  <ul class="rules">
+    <li><b>Chave KMS exclusiva</b><span>Só os workers decifram as credenciais. A API pode gravar, mas não ler.</span></li>
+    <li><b>Duas roles por conta</b><span>Leitura para coletar; escrita só para ações e só em recursos com a tag <code>cloudview-actions=enabled</code>.</span></li>
+    <li><b>Credenciais temporárias</b><span>Tokens STS e Azure ficam só em memória, por no máximo 1 hora.</span></li>
+    <li><b>Alerta de leitura indevida</b><span>Qualquer leitura de credencial fora dos workers dispara alerta.</span></li>
+  </ul>
+</section>
+
+<section>
+  <div class="section-head">
+    <div class="eyebrow">Operação</div>
+    <h2>Ações rápidas, alertas e dicas</h2>
+  </div>
+  <div class="cols">
+    <div class="panel">
+      <h3>Ações rápidas</h3>
+      <p>Reiniciar, ligar e desligar VMs e bancos, novo deploy no ECS e comandos SSM pré-aprovados. Confirmação com o nome do recurso, MFA de novo e registro na auditoria.</p>
+    </div>
+    <div class="panel">
+      <h3>Alertas</h3>
+      <p>Orçamento e previsão estourando, anomalia de custo, falha de status check, manutenção agendada, patch crítico, recurso exposto à internet. Envio por e-mail, Teams, Slack ou webhook.</p>
+    </div>
+    <div class="panel">
+      <h3>Dicas de melhoria</h3>
+      <p>Advisors das nuvens e regras próprias: discos gp2 → gp3, discos e IPs sem uso, instâncias superdimensionadas, gerações antigas, portas 22/3389 abertas, cobertura de Savings Plans e reservas.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head">
+    <div class="eyebrow">Roadmap</div>
+    <h2>Entregas por fase</h2>
+    <p class="muted">Prazos estimados para 1 a 2 desenvolvedores full-stack.</p>
+  </div>
+  <div class="roadmap">
+    <div class="phase done">
+      <span class="tag">Fase 0 <span class="pill">entregue</span></span>
+      <div class="what">
+        <b>Fundação</b>
+        <ul class="delivered">
+          <li>Keycloak com senha forte e TOTP obrigatório</li>
+          <li>API/BFF com sessão no servidor e step-up MFA</li>
+          <li>Clientes e papéis por cliente</li>
+          <li>Isolamento por cliente no Postgres (RLS)</li>
+          <li>Auditoria que não pode ser alterada</li>
+          <li>Painel: visão geral, clientes, acessos, auditoria</li>
+          <li>Terraform da conta hub validado</li>
+          <li>CloudFormation de onboarding AWS</li>
+          <li>CI com 22 testes, incluindo RLS em Postgres real</li>
+        </ul>
+      </div>
+      <span class="when">2–3 semanas</span>
+    </div>
+    <div class="phase">
+      <span class="tag">Fase 1</span>
+      <div class="what"><b>MVP AWS</b><span class="muted">Contas e Organizations, inventário e rede, custos e previsão, saúde, dashboard geral, reiniciar/ligar/desligar.</span></div>
+      <span class="when">4–6 semanas</span>
+    </div>
+    <div class="phase">
+      <span class="tag">Fase 2</span>
+      <div class="what"><b>Otimização e alertas</b><span class="muted">Recomendações, orçamentos, anomalias, notificações, patches.</span></div>
+      <span class="when">3–4 semanas</span>
+    </div>
+    <div class="phase">
+      <span class="tag">Fase 3</span>
+      <div class="what"><b>Azure</b><span class="muted">Resource Graph, Cost Management, Advisor, Resource Health, ações em VM.</span></div>
+      <span class="when">3–4 semanas</span>
+    </div>
+    <div class="phase">
+      <span class="tag">Fase 4</span>
+      <div class="what"><b>OCI</b><span class="muted">Search, Usage API, Cloud Advisor, Monitoring, ações em instância.</span></div>
+      <span class="when">3–4 semanas</span>
+    </div>
+    <div class="phase">
+      <span class="tag">Fase 5</span>
+      <div class="what"><b>Evolução</b><span class="muted">Portal do cliente, topologia de rede, relatório mensal, agenda liga/desliga, rateio por tag.</span></div>
+      <span class="when">contínuo</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head">
+    <div class="eyebrow">Custo da plataforma</div>
+    <h2>Quanto custa manter no ar</h2>
+  </div>
+  <div class="cost">
+    <div class="panel">
+      <span class="muted">Estimativa mensal, até ~100 contas</span>
+      <span class="big">US$ 250–450</span>
+      <p>Valores de referência, ainda não validados numa conta real. Somam-se as chamadas ao Cost Explorer (US$ 0,01 cada).</p>
+    </div>
+    <div class="panel bars" aria-label="Composição estimada do custo mensal em dólares">
+      <div class="bar"><span>RDS Multi-AZ</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="v">~130</span></div>
+      <div class="bar"><span>ECS Fargate</span><div class="track"><div class="fill" style="width:92%"></div></div><span class="v">~120</span></div>
+      <div class="bar"><span>ALB + WAF</span><div class="track"><div class="fill" style="width:38%"></div></div><span class="v">~50</span></div>
+      <div class="bar"><span>Redis</span><div class="track"><div class="fill" style="width:23%"></div></div><span class="v">~30</span></div>
+      <div class="bar"><span>Secrets, KMS, SQS</span><div class="track"><div class="fill" style="width:15%"></div></div><span class="v">~20</span></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <span>Código e documentação: <a href="https://github.com/faiole/cloud-view/tree/claude/vigilant-hawking-kt9w91">faiole/cloud-view</a></span>
+  <span>Detalhes: <code>docs/ARCHITECTURE.md</code> · <code>docs/FASE-0.md</code></span>
+</footer>
+
+</div>
