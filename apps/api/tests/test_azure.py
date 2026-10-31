@@ -444,3 +444,22 @@ def test_token_cache(fake):
     arm.list_all("/subscriptions", "2022-12-01")
     arm.list_all("/subscriptions", "2022-12-01")
     assert len(fake.token_forms) == 1
+
+
+def test_worker_context_loads_every_cloud(client, oidc, vault_keys):
+    """Regressão: o contexto do worker real precisa trazer as credenciais de AWS, Azure e OCI."""
+    from app import worker as wmod
+
+    admin(client, oidc)
+    client.put(
+        "/api/admin/azure/hub",
+        json={
+            "client_id": "cccccccc-bbbb-cccc-dddd-eeeeeeeeeeee",
+            "home_tenant_id": fa.TENANT,
+            "client_secret": "segredo-hub-123",
+        },
+    )
+    with _db() as db:
+        ctx = wmod.build_ctx(db, vault_keys)
+    assert ctx.hub is not None and ctx.oci is not None
+    assert ctx.azure.credential.client_secret == "segredo-hub-123"

@@ -15,10 +15,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.aws.session import AwsHub
-from app.collectors import aws_actions, aws_billing, aws_inventory, aws_optimization, azure
+from app.azure.client import AzureHub
+from app.collectors import aws_actions, aws_billing, aws_inventory, aws_optimization, azure, oci
 from app.collectors.common import Ctx, error_text
 from app.core.db import apply_tenant_scope, get_sessionmaker
 from app.models import ActionRequest, CloudAccount, Connection, Job
+from app.oci.client import OciHub
 from app.services import jobs, notifications, scheduler
 from app.services.allocation import reallocate_resources
 from app.services.evaluate import evaluate_all
@@ -53,6 +55,38 @@ def _handle_azure(db: Session, ctx: Ctx, job: Job, conn: Connection, acc: CloudA
     raise ValueError(f"tipo de job desconhecido para Azure: {job.kind}")
 
 
+def build_ctx(db: Session, vault) -> Ctx:
+    """Credenciais de todas as nuvens, abertas com a chave privada do cofre (só no worker)."""
+    return Ctx(
+        hub=AwsHub.from_settings(db, vault),
+        storage=get_storage(),
+        vault=vault,
+        azure=AzureHub.from_settings(db, vault),
+        oci=OciHub.from_settings(db, vault),
+    )
+
+
+def _handle_oci(db: Session, ctx: Ctx, job: Job, conn: Connection, acc: CloudAccount | None) -> dict:
+    if job.kind == "discover":
+        return oci.discover(db, ctx, conn)
+    if job.kind == "costs":
+        out = oci.collect_costs(db, ctx, conn)
+        jobs.enqueue(db, "evaluate")
+        return out
+    if job.kind == "optimization":
+        return oci.collect_optimization(db, ctx, conn)
+    if acc is None:
+        raise ValueError("compartment removido")
+    if job.kind == "inventory":
+        out = oci.collect_inventory(db, ctx, conn, acc)
+        reallocate_resources(db, acc.id)
+        out.update(sync_rule_recommendations(db, acc))
+        return out
+    if job.kind == "health":
+        return oci.collect_health(db, ctx, conn, acc)
+    raise ValueError(f"tipo de job desconhecido para OCI: {job.kind}")
+
+
 def handle(db: Session, ctx: Ctx, job: Job) -> dict:
     conn = db.get(Connection, job.connection_id) if job.connection_id else None
     acc = db.get(CloudAccount, job.cloud_account_id) if job.cloud_account_id else None
@@ -67,6 +101,8 @@ def handle(db: Session, ctx: Ctx, job: Job) -> dict:
         raise ValueError("conexão removida")
     if conn.provider == "azure":
         return _handle_azure(db, ctx, job, conn, acc)
+    if conn.provider == "oci":
+        return _handle_oci(db, ctx, job, conn, acc)
     if job.kind == "discover":
         try:
             return aws_inventory.discover_accounts(db, ctx, conn)
@@ -114,7 +150,7 @@ class Worker:
             vault = get_vault()
             self._ctx = (
                 time.time(),
-                Ctx(hub=AwsHub.from_settings(db, vault), storage=get_storage(), vault=vault),
+                build_ctx(db, vault),
             )
         return self._ctx[1]
 

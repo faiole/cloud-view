@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import ActionRequest, CloudAccount, HealthEvent, Resource
 from app.permissions import Perm
-from app.resource_types import INSTANCE_TYPES, NETWORK_TYPES, RUNNING, STOPPED
+from app.resource_types import ACTION_TAGS, INSTANCE_TYPES, NETWORK_TYPES, RUNNING, STOPPED
 from app.schemas import (
     ActionIn,
     ActionOut,
@@ -175,13 +175,14 @@ def request_action(
     r = _resource(db, tenant_id, resource_id)
     if r.type not in INSTANCE_TYPES:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "ações disponíveis só para instâncias EC2 e VMs do Azure"
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "ações disponíveis só para instâncias (EC2, VMs do Azure, Compute da OCI)",
         )
     if body.confirm.strip() not in {r.native_id, r.name or r.native_id}:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "confirmação não confere com o nome do recurso"
         )
-    if r.tags.get("cloudview-actions") != "enabled":
+    if not any(r.tags.get(t) == "enabled" for t in ACTION_TAGS):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             "ações rápidas não habilitadas para este recurso (adicione a tag cloudview-actions=enabled)",

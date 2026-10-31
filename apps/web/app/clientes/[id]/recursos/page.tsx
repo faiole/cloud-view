@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { Fragment, useEffect, useState } from "react";
 import Findings from "@/components/Findings";
-import { actionLabel, ago, api, can, errorText, INSTANCE_TYPES, typeLabel, type ActionReq, type Resource } from "@/lib/api";
+import { actionLabel, ago, api, can, errorText, INSTANCE_TYPES, PROVIDER_LABEL, typeLabel, type ActionReq, type Resource } from "@/lib/api";
 import { useMe } from "@/lib/useMe";
 
 function healthPill(r: Resource) {
@@ -21,7 +21,7 @@ function ActionPanel({ tenantId, r, onDone }: { tenantId: string; r: Resource; o
   const [reason, setReason] = useState("");
   const [msg, setMsg] = useState("");
   const expected = r.name || r.native_id;
-  const enabled = r.tags["cloudview-actions"] === "enabled";
+  const enabled = r.tags["cloudview-actions"] === "enabled" || r.tags["cloudview.actions"] === "enabled";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -58,7 +58,7 @@ function ActionPanel({ tenantId, r, onDone }: { tenantId: string; r: Resource; o
 export default function Recursos() {
   const { id } = useParams<{ id: string }>();
   const me = useMe();
-  const [type, setType] = useState("ec2_instance,vm");
+  const [type, setType] = useState("ec2_instance,vm,oci_instance");
   const [q, setQ] = useState("");
   const [onlyFindings, setOnlyFindings] = useState(false);
   const [items, setItems] = useState<Resource[]>([]);
@@ -112,10 +112,10 @@ export default function Recursos() {
             {items.map((r) => (
               <Fragment key={r.id}>
                 <tr>
-                  <td><strong>{r.name || "—"}</strong><br /><span className="muted mono small" title={r.native_id}>{r.provider === "azure" ? `${String(r.attributes.resource_group ?? "")}` : r.native_id}</span></td>
+                  <td><strong>{r.name || "—"}</strong><br /><span className="muted mono small" title={r.native_id}>{r.provider === "azure" ? `${String(r.attributes.resource_group ?? "")}` : r.provider === "oci" ? `…${r.native_id.slice(-12)}` : r.native_id}</span></td>
                   {isInstance && (
                     <>
-                      <td className="mono">{r.instance_type}<br /><span className="muted">{r.provider === "azure" ? "Azure" : "AWS"} · {r.vcpu ?? "?"} vCPU · {r.memory_mib ? (r.memory_mib / 1024).toFixed(1) : "?"} GiB · {r.platform}</span></td>
+                      <td className="mono">{r.instance_type}<br /><span className="muted">{PROVIDER_LABEL[r.provider] ?? r.provider} · {r.vcpu ?? "?"} vCPU · {r.memory_mib ? (r.memory_mib / 1024).toFixed(1) : "?"} GiB · {r.platform}</span></td>
                       <td>{r.state}</td>
                       <td>{healthPill(r)}</td>
                     </>
@@ -123,7 +123,7 @@ export default function Recursos() {
                   <td className="mono small">
                     {r.private_ips.join(", ")}{r.public_ips.length ? <><br />pública {r.public_ips.join(", ")}</> : null}
                     {r.vpc_id && <><br /><span className="muted">{r.vpc_id.split("/").pop()}{r.subnet_id ? ` / ${r.subnet_id.split("/").pop()}` : ""}</span></>}
-                    {(r.type === "ebs_volume" || r.type === "disk") && <span className="muted">{String(r.attributes.size_gib)} GiB {String(r.attributes.volume_type)}</span>}
+                    {(r.type === "ebs_volume" || r.type === "disk" || r.type === "block_volume") && <span className="muted">{String(r.attributes.size_gib)} GiB {String(r.attributes.volume_type)}</span>}
                     {(r.type === "vpc" || r.type === "subnet") && <span className="muted">{String(r.attributes.cidr)}</span>}
                   </td>
                   <td className="mono small">{r.account_name || r.account_native_id}<br /><span className="muted">{r.region}</span></td>

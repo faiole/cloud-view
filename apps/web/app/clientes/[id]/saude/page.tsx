@@ -14,7 +14,7 @@ export default function Saude() {
   const [instances, setInstances] = useState<Resource[]>([]);
   useEffect(() => {
     api<HealthSummary>(`/tenants/${id}/health`).then(setH);
-    api<Resource[]>(`/tenants/${id}/resources?type=ec2_instance,vm`).then(setInstances);
+    api<Resource[]>(`/tenants/${id}/resources?type=ec2_instance,vm,oci_instance`).then(setInstances);
   }, [id]);
   type Patch = { managed?: boolean; critical?: number; security?: number; missing?: number; failed?: number; pending_reboot?: number; last_scan?: string };
   const patchOf = (r: Resource) => (r.attributes.patch ?? {}) as Patch;

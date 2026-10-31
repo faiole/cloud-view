@@ -148,6 +148,12 @@ class Connection(Base):
     # Azure: app próprio do cliente (None = app hub da plataforma) e conta de cobrança para invoices
     client_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     billing_account_id: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # OCI: chave de API própria do cliente (own_key) ou identidade hub com política cross-tenancy (hub)
+    oci_auth: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    oci_user_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    oci_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    oci_public_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    home_region: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     @property
     def collectable(self) -> bool:
@@ -155,6 +161,9 @@ class Connection(Base):
             return bool(self.role_arn)
         if self.provider == "azure":
             return self.kind == "azure_tenant" and self.status != "manual"
+        if self.provider == "oci":
+            ready = self.oci_auth == "hub" or (self.oci_auth == "own_key" and bool(self.oci_user_id))
+            return self.kind == "oci_tenancy" and self.status != "manual" and ready and bool(self.home_region)
         return False
 
     @property

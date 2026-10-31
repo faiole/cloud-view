@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.aws.session import HUB_SECRET_KEY, role_arn_for
 from app.azure.client import AZURE_HUB_KEY
 from app.models import CloudAccount, CloudSecret, Connection, Job, PlatformSetting
+from app.oci.client import OCI_HUB_KEY, generate_api_key
 from app.schemas import (
     AzureConnectionCreate,
     AzureHubIn,
@@ -22,6 +23,9 @@ from app.schemas import (
     HubPrincipalIn,
     HubStatus,
     JobOut,
+    OciConnectionCreate,
+    OciHubIn,
+    OciHubStatus,
 )
 from app.security.deps import require_admin, require_recent_mfa, scoped_db
 from app.security.session import SessionData
@@ -213,13 +217,14 @@ def update_connection(
     allowed = {
         "aws": {"cost_explorer", "focus_s3", "manual"},
         "azure": {"azure_cost_management", "focus_blob", "manual"},
+        "oci": {"oci_usage_api", "focus_oci", "manual"},
     }
     if "cost_source" in changes and changes["cost_source"] not in allowed.get(c.provider, {"manual"}):
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "fonte de custos não disponível para esta nuvem"
         )
     uri = changes.get("focus_s3_uri")
-    if uri and not uri.startswith({"aws": "s3://", "azure": "https://"}.get(c.provider, "-")):
+    if uri and not uri.startswith({"aws": "s3://", "azure": "https://"}.get(c.provider, "-")):  # OCI não usa
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "local do export não corresponde à nuvem da conexão"
         )
@@ -392,3 +397,137 @@ def set_hub_principal(
     db.flush()
     audit.record(db, request, "aws.hub.principal", user=user, target=arn)
     return hub_status(user, db)
+
+
+# --- OCI ------------------------------------------------------------------------------------------
+
+OCI_HUB_META = "oci_hub_meta"
+
+
+def _seal_new_key(db: Session, vault: Vault, user: SessionData, purpose: str) -> tuple[str, str, str]:
+    """Gera o par de chaves de API da OCI; a privada vai cifrada para o cofre e não sai mais."""
+    priv, pub, fp = generate_api_key()
+    try:
+        sid = store_secret(db, vault, purpose, priv.encode(), user.email)
+    except VaultError as e:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "cofre sem chave pública configurada") from e
+    return sid, pub, fp
+
+
+@router.post("/connections/oci", response_model=ConnectionDetail, status_code=201)
+def create_oci_connection(
+    body: OciConnectionCreate,
+    request: Request,
+    _: SessionData = Depends(require_admin),
+    user: SessionData = Depends(require_recent_mfa),
+    db: Session = Depends(scoped_db),
+    vault: Vault = Depends(get_vault),
+):
+    """Tenancy OCI de um cliente. Com `own_key`, o painel gera a chave de API e devolve só a pública:
+    o cliente cria um usuário, cola a chave pública nele e informa o OCID do usuário."""
+    c = db.scalar(
+        select(Connection).where(Connection.provider == "oci", Connection.native_id == body.tenancy_id)
+    )
+    if c is not None and c.status != "manual":
+        raise HTTPException(status.HTTP_409_CONFLICT, "já existe uma conexão com coleta para esta tenancy")
+    if c is None:
+        c = Connection(provider="oci", native_id=body.tenancy_id, kind="oci_tenancy", name=body.name)
+        db.add(c)
+    c.kind, c.name, c.home_region, c.regions = (
+        "oci_tenancy",
+        body.name,
+        body.home_region,
+        body.regions or None,
+    )
+    c.cost_source, c.collect_invoices, c.oci_auth = body.cost_source, False, body.auth
+    c.status, c.last_error = "pending", None
+    if body.auth == "own_key":
+        c.secret_ref, c.oci_public_key, c.oci_fingerprint = _seal_new_key(db, vault, user, "oci_api_key")
+        c.oci_user_id = body.user_id
+    db.flush()
+    audit.record(
+        db, request, "connection.create", user=user, target=f"oci:{c.native_id}", details={"auth": body.auth}
+    )
+    return _detail(db, c)
+
+
+@router.post("/connections/{connection_id}/oci-key", response_model=ConnectionDetail)
+def rotate_oci_key(
+    connection_id: str,
+    request: Request,
+    _: SessionData = Depends(require_admin),
+    user: SessionData = Depends(require_recent_mfa),
+    db: Session = Depends(scoped_db),
+    vault: Vault = Depends(get_vault),
+):
+    """Gera uma chave nova (rotação). O cliente adiciona a nova chave pública ao usuário e remove a antiga."""
+    c = _get(db, connection_id)
+    if c.provider != "oci" or c.oci_auth != "own_key":
+        raise HTTPException(status.HTTP_409_CONFLICT, "só para conexões OCI com chave própria")
+    old = db.get(CloudSecret, c.secret_ref) if c.secret_ref else None
+    c.secret_ref, c.oci_public_key, c.oci_fingerprint = _seal_new_key(db, vault, user, "oci_api_key")
+    if old is not None:
+        db.delete(old)
+    db.flush()
+    audit.record(
+        db,
+        request,
+        "connection.oci_key_rotate",
+        user=user,
+        target=f"oci:{c.native_id}",
+        details={"fingerprint": c.oci_fingerprint},
+    )
+    return _detail(db, c)
+
+
+@router.get("/oci/hub", response_model=OciHubStatus)
+def oci_hub_status(_: SessionData = Depends(require_admin), db: Session = Depends(scoped_db)):
+    sec = _setting(db, OCI_HUB_KEY)
+    meta = json.loads(_setting(db, OCI_HUB_META).value) if _setting(db, OCI_HUB_META) else {}
+    return OciHubStatus(
+        configured=sec is not None,
+        tenancy_id=meta.get("tenancy_id"),
+        user_id=meta.get("user_id"),
+        fingerprint=meta.get("fingerprint"),
+        public_key=meta.get("public_key"),
+        updated_at=sec.updated_at if sec else None,
+    )
+
+
+@router.put("/oci/hub", response_model=OciHubStatus)
+def set_oci_hub(
+    body: OciHubIn,
+    request: Request,
+    _: SessionData = Depends(require_admin),
+    user: SessionData = Depends(require_recent_mfa),
+    db: Session = Depends(scoped_db),
+    vault: Vault = Depends(get_vault),
+):
+    """Identidade hub (usuário na tenancy da plataforma, para políticas cross-tenancy).
+    Gera a chave de API; cole a chave pública devolvida no usuário."""
+    priv, pub, fp = generate_api_key()
+    cred = {
+        "tenancy_id": body.tenancy_id,
+        "user_id": body.user_id,
+        "fingerprint": fp,
+        "private_key_pem": priv,
+    }
+    try:
+        sid = store_secret(db, vault, "oci_hub_key", json.dumps(cred).encode(), user.email)
+    except VaultError as e:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "cofre sem chave pública configurada") from e
+    old = _setting(db, OCI_HUB_KEY)
+    if old is not None and (prev := db.get(CloudSecret, old.value)) is not None:
+        db.delete(prev)
+    _put_setting(db, OCI_HUB_KEY, sid)
+    meta = {
+        "tenancy_id": body.tenancy_id,
+        "user_id": body.user_id,
+        "fingerprint": fp,
+        "public_key": pub,
+        "home_region": body.home_region,
+    }
+    _put_setting(db, OCI_HUB_META, json.dumps(meta))
+    db.flush()
+    audit.record(db, request, "oci.hub.set", user=user, target=body.user_id, details={"fingerprint": fp})
+    return oci_hub_status(user, db)

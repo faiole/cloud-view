@@ -78,6 +78,14 @@ O Caddy emite o certificado HTTPS sozinho na primeira requisição.
    administrador dele e rode `onboarding/azure/grant-access.sh` no Cloud Shell do cliente.
 3. **Testar** → as subscriptions aparecem em *Contas de nuvem* para atribuir às empresas.
 
+## Conectar a OCI
+
+1. *Conexões → OCI → Nova conexão* com o OCID da tenancy e a região home do cliente. O painel gera a
+   chave de API e mostra a chave pública e as políticas.
+2. O cliente cria o usuário `cloudview`, cola a chave pública e cria as políticas
+   (`onboarding/oci/README.md`); você informa o OCID do usuário na conexão.
+3. **Testar** → os compartments aparecem em *Contas de nuvem* para atribuir às empresas.
+
 ## Operação
 
 | Tarefa | Como |

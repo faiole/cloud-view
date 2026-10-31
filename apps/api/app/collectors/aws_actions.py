@@ -25,6 +25,10 @@ def execute_action(db: Session, ctx: Ctx, req: ActionRequest) -> dict:
             from app.collectors import azure
 
             state = azure.vm_action(db, ctx, res, req.action)
+        elif res.provider == "oci":
+            from app.collectors import oci
+
+            state = oci.instance_action(db, ctx, res, req.action)
         else:
             sess = account_session(ctx, conn, res.account.native_id, operator=True, who=who[:64])
             ec2 = client(sess, "ec2", res.region)

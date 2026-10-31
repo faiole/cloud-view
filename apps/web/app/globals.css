@@ -152,3 +152,6 @@ fieldset.cats { border: 0; padding: 0; margin: 0; display: flex; gap: 10px; flex
 /* Fase 3 */
 textarea { font: 12px/1.4 "IBM Plex Mono", ui-monospace, monospace; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); width: 100%; min-width: 0; }
 label.grow { flex: 1 1 280px; }
+
+/* Fase 4 */
+details.card summary { cursor: pointer; }

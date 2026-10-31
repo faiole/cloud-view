@@ -282,7 +282,13 @@ export type ConnectionDetail = {
   provider: string;
   client_id: string | null;
   billing_account_id: string | null;
+  oci_auth: string | null;
+  oci_user_id: string | null;
+  oci_fingerprint: string | null;
+  oci_public_key: string | null;
+  home_region: string | null;
 };
+export type OciHubStatus = { configured: boolean; tenancy_id: string | null; user_id: string | null; fingerprint: string | null; public_key: string | null; updated_at: string | null };
 export type AzureHubStatus = { configured: boolean; client_id: string | null; home_tenant_id: string | null; auth: string | null; updated_at: string | null };
 export type Job = {
   id: string;
@@ -299,14 +305,15 @@ export type HubStatus = { mode: "default" | "vault"; principal_arn: string | nul
 export const actionLabel: Record<string, string> = { reboot: "Reiniciar", start: "Ligar", stop: "Desligar" };
 // Grupos de tipos equivalentes entre nuvens (AWS, Azure)
 export const typeLabel: Record<string, string> = {
-  "ec2_instance,vm": "Instâncias e VMs",
-  "ebs_volume,disk": "Volumes e discos",
+  "ec2_instance,vm,oci_instance": "Instâncias e VMs",
+  "ebs_volume,disk,block_volume": "Volumes e discos",
   "elastic_ip,public_ip": "IPs públicos",
   vpc: "VPCs e VNets",
   subnet: "Subnets",
   security_group: "Security groups e NSGs",
 };
-export const INSTANCE_TYPES = ["ec2_instance", "vm"];
+export const INSTANCE_TYPES = ["ec2_instance", "vm", "oci_instance"];
+export const PROVIDER_LABEL: Record<string, string> = { aws: "AWS", azure: "Azure", oci: "OCI" };
 
 export function ago(iso: string | null): string {
   if (!iso) return "nunca";

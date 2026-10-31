@@ -27,7 +27,9 @@ def connection_kinds(conn: Connection) -> list[str]:
         if kind == "costs" and conn.cost_source == "manual":
             continue
         if kind == "invoices" and (
-            not conn.collect_invoices or (conn.provider == "azure" and not conn.billing_account_id)
+            not conn.collect_invoices
+            or conn.provider == "oci"  # invoices da OCI: envio manual
+            or (conn.provider == "azure" and not conn.billing_account_id)
         ):
             continue
         if kind == "aws_health" and conn.provider != "aws":
@@ -61,7 +63,7 @@ def tick(db: Session, at: datetime | None = None) -> list[str]:
         created.append("evaluate")
     conns = [
         c
-        for c in db.scalars(select(Connection).where(Connection.provider.in_(("aws", "azure"))))
+        for c in db.scalars(select(Connection).where(Connection.provider.in_(("aws", "azure", "oci"))))
         if c.collectable
     ]
     for conn in conns:

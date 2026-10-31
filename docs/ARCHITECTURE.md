@@ -363,7 +363,7 @@ cloud-view/
 | **1 – Coleta AWS** ✅ | Conexões AWS / Organizations, coleta automática de custos (Cost Explorer ou FOCUS no S3) e invoices, inventário + rede, saúde, ações rápidas — ver [FASE-1.md](FASE-1.md) | 4–6 semanas |
 | **2 – Otimização e alertas** ✅ | Cost Optimization Hub + regras próprias, cobertura de Savings Plans, orçamentos, anomalias, alertas e notificações (e-mail/Slack/Teams/webhook), patches SSM — ver [FASE-2.md](FASE-2.md) | 3–4 semanas |
 | **3 – Azure** ✅ | App hub multi-tenant, coleta automática (Cost Management ou FOCUS no Blob, Resource Graph), Advisor, Resource Health e Service Health, ações em VM — ver [FASE-3.md](FASE-3.md) | 3–4 semanas |
-| **4 – OCI** | Coleta automática (FOCUS reports, Search), Cloud Advisor, Monitoring, ações em instância | 3–4 semanas |
+| **4 – OCI** ✅ | Chave de API gerada pelo painel (ou hub cross-tenancy), compartments, inventário e rede, manutenções e Announcements, Usage API ou FOCUS reports, Cloud Advisor, ações em instância — ver [FASE-4.md](FASE-4.md) | 3–4 semanas |
 | **5 – Evolução** | Topologia de rede, relatório mensal em PDF, agendamento liga/desliga | contínuo |
 
 \* para 1–2 desenvolvedores full-stack.

@@ -13,6 +13,7 @@ class Ctx:
     storage: object | None = None
     vault: object | None = None
     azure: object | None = None
+    oci: object | None = None
 
 
 def now() -> datetime:

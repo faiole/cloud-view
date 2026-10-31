@@ -16,6 +16,8 @@ const CODE_LABEL: Record<string, string> = {
   imdsv1: "IMDSv1 habilitado",
   volume_unencrypted: "Volumes sem criptografia",
   disk_unattached: "Discos sem uso (Azure)",
+  block_volume_unattached: "Volumes sem uso (OCI)",
+  reserved_ip_unassigned: "IPs reservados sem uso (OCI)",
   public_ip_unassociated: "IPs públicos sem uso (Azure)",
   public_ip_basic_sku: "IP público com SKU Basic aposentado",
   vm_stopped_not_deallocated: "VMs paradas sem desalocar",
@@ -46,7 +48,7 @@ export default function Rede() {
 
       {(n?.vpcs ?? []).map((v) => (
         <div className="card stack-sm" key={v.vpc.id}>
-          <h2>{v.vpc.name || v.vpc.native_id} <span className="pill todo">{v.vpc.provider === "azure" ? "VNet" : "VPC"}</span> <span className="muted small mono">{String(v.vpc.attributes.cidr)} · {v.vpc.account_name || v.vpc.account_native_id} · {v.vpc.region}{v.vpc.attributes.is_default ? " · padrão" : ""}</span></h2>
+          <h2>{v.vpc.name || v.vpc.native_id} <span className="pill todo">{({ azure: "VNet", oci: "VCN" } as Record<string, string>)[v.vpc.provider] ?? "VPC"}</span> <span className="muted small mono">{String(v.vpc.attributes.cidr)} · {v.vpc.account_name || v.vpc.account_native_id} · {v.vpc.region}{v.vpc.attributes.is_default ? " · padrão" : ""}</span></h2>
           <p className="muted">{v.instances} instâncias · {v.subnets.length} subnets</p>
           <div className="table-wrap">
             <table>

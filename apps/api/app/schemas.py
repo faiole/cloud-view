@@ -253,10 +253,16 @@ class ConnectionCreate(BaseModel):
     collect_invoices: bool = True
 
 
+OCI_TENANCY = r"^ocid1\.tenancy\.oc\d+\.\.[a-z0-9]{20,}$"
+OCI_USER = r"^ocid1\.user\.oc\d+\.\.[a-z0-9]{20,}$"
+OCI_REGION = r"^[a-z]{2}-[a-z]+-\d$"
+
+
 class ConnectionUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     cost_source: str | None = Field(
-        default=None, pattern=r"^(cost_explorer|focus_s3|azure_cost_management|focus_blob|manual)$"
+        default=None,
+        pattern=r"^(cost_explorer|focus_s3|azure_cost_management|focus_blob|oci_usage_api|focus_oci|manual)$",
     )
     focus_s3_uri: str | None = Field(
         default=None,
@@ -265,6 +271,8 @@ class ConnectionUpdate(BaseModel):
     regions: list[str] | None = None
     collect_invoices: bool | None = None
     billing_account_id: str | None = Field(default=None, max_length=300)
+    oci_user_id: str | None = Field(default=None, pattern=OCI_USER)
+    home_region: str | None = Field(default=None, pattern=OCI_REGION)
 
 
 class ConnectionDetail(BaseModel):
@@ -288,6 +296,11 @@ class ConnectionDetail(BaseModel):
     last_sync_at: datetime | None
     client_id: str | None = None
     billing_account_id: str | None = None
+    oci_auth: str | None = None
+    oci_user_id: str | None = None
+    oci_fingerprint: str | None = None
+    oci_public_key: str | None = None
+    home_region: str | None = None
     accounts: int = 0
 
 
@@ -589,3 +602,31 @@ class ChannelOut(BaseModel):
     created_at: datetime
     signing_secret: str | None = None  # só na criação de webhook
     last_delivery: str | None = None
+
+
+# --- Fase 4: OCI ----------------------------------------------------------------------------------
+
+
+class OciConnectionCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    tenancy_id: str = Field(pattern=OCI_TENANCY)
+    home_region: str = Field(pattern=OCI_REGION, description="ex.: sa-saopaulo-1")
+    regions: list[str] | None = None
+    cost_source: str = Field(default="oci_usage_api", pattern=r"^(oci_usage_api|focus_oci|manual)$")
+    auth: str = Field(default="own_key", pattern=r"^(own_key|hub)$")
+    user_id: str | None = Field(default=None, pattern=OCI_USER)
+
+
+class OciHubIn(BaseModel):
+    tenancy_id: str = Field(pattern=OCI_TENANCY, description="tenancy da plataforma")
+    user_id: str = Field(pattern=OCI_USER)
+    home_region: str = Field(pattern=OCI_REGION)
+
+
+class OciHubStatus(BaseModel):
+    configured: bool
+    tenancy_id: str | None
+    user_id: str | None
+    fingerprint: str | None
+    public_key: str | None
+    updated_at: datetime | None

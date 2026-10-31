@@ -2,7 +2,8 @@
 
 import { Fragment, useEffect, useState } from "react";
 import { AzureHub, AzureOnboarding, NewAzureConnection } from "@/components/AzureConnections";
-import { ago, api, errorText, type AzureHubStatus, type ConnectionDetail, type HubStatus, type Job } from "@/lib/api";
+import { NewOciConnection, OciHub, OciOnboarding } from "@/components/OciConnections";
+import { ago, api, errorText, type AzureHubStatus, type ConnectionDetail, type HubStatus, type Job, type OciHubStatus } from "@/lib/api";
 
 const STATUS: Record<string, [string, string]> = {
   ok: ["ok", "funcionando"],
@@ -91,7 +92,8 @@ export default function Conexoes() {
   const [conns, setConns] = useState<ConnectionDetail[]>([]);
   const [hub, setHub] = useState<HubStatus | null>(null);
   const [azHub, setAzHub] = useState<AzureHubStatus | null>(null);
-  const [cloud, setCloud] = useState<"aws" | "azure">("aws");
+  const [ociHub, setOciHub] = useState<OciHubStatus | null>(null);
+  const [cloud, setCloud] = useState<"aws" | "azure" | "oci">("aws");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
@@ -101,6 +103,7 @@ export default function Conexoes() {
     api<ConnectionDetail[]>("/admin/connections").then(setConns);
     api<HubStatus>("/admin/aws/hub").then(setHub);
     api<AzureHubStatus>("/admin/azure/hub").then(setAzHub);
+    api<OciHubStatus>("/admin/oci/hub").then(setOciHub);
     api<Job[]>("/admin/jobs?limit=40").then(setJobs);
   };
   useEffect(() => { load(); }, []);
@@ -152,6 +155,7 @@ export default function Conexoes() {
       <nav className="tabs" aria-label="Nuvem">
         <a href="#aws" className={cloud === "aws" ? "active" : ""} onClick={(e) => { e.preventDefault(); setCloud("aws"); }}>AWS</a>
         <a href="#azure" className={cloud === "azure" ? "active" : ""} onClick={(e) => { e.preventDefault(); setCloud("azure"); }}>Azure</a>
+        <a href="#oci" className={cloud === "oci" ? "active" : ""} onClick={(e) => { e.preventDefault(); setCloud("oci"); }}>OCI</a>
       </nav>
 
       {cloud === "aws" && <Hub hub={hub} reload={load} />}
@@ -181,7 +185,9 @@ export default function Conexoes() {
         <button type="submit">Adicionar conexão</button>
         {msg && <span className="note">{msg}</span>}
       </form>}
-      {cloud === "azure" && msg && <span className="note">{msg}</span>}
+      {cloud === "oci" && <NewOciConnection onCreated={(c) => { setOpen(c.id); setMsg("Conexão criada. Siga os passos abaixo."); load(); }} />}
+      {cloud === "oci" && <OciHub hub={ociHub} reload={load} />}
+      {cloud !== "aws" && msg && <span className="note">{msg}</span>}
 
       <div className="card table-wrap">
         <table>
@@ -192,13 +198,13 @@ export default function Conexoes() {
               return (
                 <Fragment key={c.id}>
                   <tr>
-                    <td><strong>{c.name}</strong><br /><span className="muted mono">{{ aws_organization: "AWS Organization", aws_account: "Conta AWS", azure_tenant: "Tenant Azure" }[c.kind] ?? c.kind} {c.native_id}</span></td>
+                    <td><strong>{c.name}</strong><br /><span className="muted mono">{{ aws_organization: "AWS Organization", aws_account: "Conta AWS", azure_tenant: "Tenant Azure", oci_tenancy: "Tenancy OCI" }[c.kind] ?? c.kind} {c.native_id}</span></td>
                     <td className="num">{c.accounts}</td>
-                    <td>{{ cost_explorer: "Cost Explorer", focus_s3: "FOCUS (S3)", azure_cost_management: "Cost Management", focus_blob: "FOCUS (Blob)", manual: "importação" }[c.cost_source] ?? c.cost_source}</td>
+                    <td>{{ cost_explorer: "Cost Explorer", focus_s3: "FOCUS (S3)", azure_cost_management: "Cost Management", focus_blob: "FOCUS (Blob)", oci_usage_api: "Usage API", focus_oci: "FOCUS (Oracle)", manual: "importação" }[c.cost_source] ?? c.cost_source}</td>
                     <td><span className={`pill ${cls}`}>{label}</span>{c.last_error && <><br /><span className="error small">{c.last_error}</span></>}</td>
                     <td>{ago(c.last_sync_at)}</td>
                     <td className="actions">
-                      {(c.role_arn || (c.provider === "azure" && c.status !== "manual")) && <>
+                      {(c.role_arn || (c.provider !== "aws" && c.status !== "manual")) && <>
                         <button className="ghost" onClick={() => setOpen(open === c.id ? null : c.id)}>{open === c.id ? "Fechar" : "Como conectar"}</button>
                         <button className="ghost" onClick={() => run(c, "test")}>Testar</button>
                         <button onClick={() => run(c, "sync")} disabled={c.status !== "ok"}>Sincronizar agora</button>
@@ -207,6 +213,7 @@ export default function Conexoes() {
                   </tr>
                   {open === c.id && c.role_arn && <tr><td colSpan={6}><Onboarding c={c} principal={hub?.principal_arn ?? null} /></td></tr>}
                   {open === c.id && c.provider === "azure" && <tr><td colSpan={6}><AzureOnboarding c={c} hub={azHub} /></td></tr>}
+                  {open === c.id && c.provider === "oci" && c.status !== "manual" && <tr><td colSpan={6}><OciOnboarding c={c} reload={load} /></td></tr>}
                 </Fragment>
               );
             })}

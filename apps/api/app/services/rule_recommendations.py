@@ -21,6 +21,7 @@ EBS_PRICE = {
     "standard": Decimal("0.05"),
 }
 EIP_MONTH = Decimal("3.65")  # US$ 0,005/h
+OCI_BLOCK_PRICE = Decimal("0.0255")  # OCI block volume "balanced", US$ por GB-mês
 # Azure (US$ por GB-mês, aproximado por SKU de disco gerenciado)
 AZURE_DISK_PRICE = {
     "premium_lrs": Decimal("0.135"),
@@ -38,6 +39,7 @@ RULES = {
     "disk_unattached": ("Delete", "Remover disco sem uso"),
     "public_ip_unassociated": ("Delete", "Liberar IP público sem uso"),
     "vm_stopped_not_deallocated": ("Stop", "Desalocar VM parada"),
+    "block_volume_unattached": ("Delete", "Remover volume sem uso"),
 }
 
 
@@ -59,6 +61,9 @@ def _estimate(res: Resource, code: str) -> tuple[Decimal, str | None, str | None
         size = Decimal(a.get("size_gib") or 0)
         price = AZURE_DISK_PRICE.get(str(a.get("volume_type") or "").lower(), Decimal("0.075"))
         return size * price, f"{size} GiB {a.get('volume_type')}", "remover (faça snapshot antes)"
+    if code == "block_volume_unattached":
+        size = Decimal(a.get("size_gib") or 0)
+        return size * OCI_BLOCK_PRICE, f"{size} GiB block volume", "remover (faça backup antes)"
     if code == "public_ip_unassociated":
         return EIP_MONTH, "IP público sem associação", "remover o IP"
     if code == "vm_stopped_not_deallocated":
